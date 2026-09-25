@@ -13,8 +13,10 @@ import {
 import { Button, Badge, Input, Modal, ModalFooter } from '../components/ui';
 import { TransferStepper } from '../components/transfer/TransferStepper';
 import { useTransfer } from '../context/TransferContext';
+import { useAuth } from '../context/AuthContext';
 
 export const TransferQueue = () => {
+  const { role } = useAuth();
   const { transfers, approveTransfer, rejectTransfer, toastMessage } = useTransfer();
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedTransferId, setSelectedTransferId] = useState(null);
@@ -167,27 +169,45 @@ export const TransferQueue = () => {
                 </div>
               </div>
 
-              {/* Action Buttons for Pending Transfers */}
-              {isPending && (
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    icon={XCircle}
-                    onClick={() => handleOpenReject(transfer.id)}
-                    className="text-red-600 hover:bg-red-50 border-red-200"
-                  >
-                    Reject Transfer
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon={CheckCircle2}
-                    onClick={() => approveTransfer(transfer.id)}
-                    className="bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-500/20"
-                  >
-                    Approve Transfer & Reassign Roster
-                  </Button>
+              {/* Action Area for Pending Transfers (Role-Isolated) */}
+              {isPending && role === 'admin' && (
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-1.5 text-xs text-purple-700 font-semibold">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Admin Clearance: Transfer Authorization Required</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      icon={XCircle}
+                      onClick={() => handleOpenReject(transfer.id)}
+                      className="text-red-600 hover:bg-red-50 border-red-200"
+                    >
+                      Reject Transfer
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={CheckCircle2}
+                      onClick={() => approveTransfer(transfer.id)}
+                      className="bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-500/20"
+                    >
+                      Approve Transfer & Reassign Roster
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {isPending && role === 'doctor' && (
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <span className="text-amber-700 font-medium flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-amber-500" />
+                    Awaiting Administrative Review & Bed Management Authorization
+                  </span>
+                  <Badge variant="tier2" size="sm">
+                    Pending Admin Decision
+                  </Badge>
                 </div>
               )}
             </div>

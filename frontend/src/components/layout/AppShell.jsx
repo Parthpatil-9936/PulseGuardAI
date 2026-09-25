@@ -36,7 +36,7 @@ export const AppShell = ({
   children,
   onOpenDesignSystem,
 }) => {
-  const { user, role, switchRole, logout } = useAuth();
+  const { user, role, logout } = useAuth();
   const { 
     isCloudOutage, 
     toggleCloudOutage, 
@@ -252,42 +252,24 @@ export const AppShell = ({
             <span className="text-slate-300">/</span>
             <span className="text-xs text-slate-500 font-medium">Critical Care Unit 4</span>
 
-            {/* Quick Role Switcher for Hackathon Testing */}
-            <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 ml-2">
-              <button
-                type="button"
-                onClick={() => switchRole('doctor')}
-                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all ${
-                  role === 'doctor' ? 'bg-white text-[#0D8A9A] shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Doctor
-              </button>
-              <button
-                type="button"
-                onClick={() => switchRole('nurse')}
-                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all ${
-                  role === 'nurse' ? 'bg-white text-[#2563EB] shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Nurse
-              </button>
-              <button
-                type="button"
-                onClick={() => switchRole('admin')}
-                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all ${
-                  role === 'admin' ? 'bg-white text-purple-700 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Admin
-              </button>
+            {/* Authenticated Panel Clearance Badge */}
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-100/90 border border-slate-200/80 text-xs shadow-xs">
+              <span className={`w-2 h-2 rounded-full ${
+                role === 'admin' ? 'bg-purple-600 animate-pulse' : role === 'doctor' ? 'bg-teal-600 animate-pulse' : 'bg-blue-600 animate-pulse'
+              }`} />
+              <span className="font-bold text-slate-800 capitalize">
+                {role === 'admin' ? 'Admin Panel' : role === 'doctor' ? 'Doctor Panel' : 'Nurse Station'}
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white text-slate-500 border border-slate-200 font-semibold uppercase">
+                Isolated
+              </span>
             </div>
           </div>
 
           {/* Right Actions: Outage Toggle, Mute Clamping, Notifications, User */}
           <div className="flex items-center gap-3">
-            {/* Cloud Outage Simulator Toggle (Admin and Doctor only) */}
-            {(role === 'admin' || role === 'doctor') && (
+            {/* Cloud Outage Simulator Toggle (Admin only) */}
+            {role === 'admin' && (
               <Tooltip 
                 content={isCloudOutage ? "Restore Hospital WAN Sync" : "Simulate complete external cloud outage (test edge resilience)"}
                 position="bottom"
@@ -384,13 +366,23 @@ export const AppShell = ({
               )}
             </div>
 
-            {/* Clinician Pill */}
+            {/* Clinician Pill & Sign Out */}
             <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
               <Avatar name={user.name} role={user.role} size="sm" />
               <div className="hidden xl:block text-left">
                 <span className="text-xs font-bold text-slate-900 block leading-tight">{user.name}</span>
                 <span className="text-[10px] text-slate-400 capitalize">{user.role}</span>
               </div>
+              <Tooltip content="Sign Out & Lock Panel (requires re-authentication to switch roles)" position="bottom">
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="p-1.5 ml-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors border border-transparent hover:border-rose-200"
+                  aria-label="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </Tooltip>
             </div>
           </div>
         </header>

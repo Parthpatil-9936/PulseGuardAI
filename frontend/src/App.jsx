@@ -15,11 +15,12 @@ import { AnalyticsDashboard } from './pages/admin/AnalyticsDashboard';
 import { DesignSystemPreview } from './pages/DesignSystemPreview';
 import { Login } from './pages/Login';
 import { CriticalAlertModal } from './components/patient/CriticalAlertModal';
+import { AccessDenied } from './components/common/AccessDenied';
 import { useTelemetrySimulator } from './hooks/useTelemetrySimulator';
 import { clinicalAudio } from './utils/audioAlarm';
 
 function MainApp() {
-  const { isAuthenticated, role } = useAuth();
+  const { isAuthenticated, role, canAccessTab } = useAuth();
   const { isAudioMuted } = useSystemHealth();
 
   // Navigation tab state
@@ -28,7 +29,8 @@ function MainApp() {
     if (typeof window !== 'undefined' && window.location.hash === '#design-system') {
       return 'design-system';
     }
-    return 'dashboard';
+    const savedRole = typeof window !== 'undefined' ? localStorage.getItem('pulseguard_role') : null;
+    return savedRole === 'admin' ? 'analytics' : 'dashboard';
   });
 
   const [selectedBedId, setSelectedBedId] = useState('04');
@@ -71,13 +73,30 @@ function MainApp() {
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
+  // Automatically synchronize tab if currentTab is forbidden for the active role
+  useEffect(() => {
+    if (isAuthenticated && role) {
+      if (currentTab !== 'design-system' && currentTab !== 'login' && !canAccessTab(currentTab)) {
+        setCurrentTab(role === 'admin' ? 'analytics' : 'dashboard');
+      }
+    }
+  }, [role, isAuthenticated]);
+
+  const getRequiredRole = (tab) => {
+    if (tab === 'transfers') return 'Doctor or Administrator';
+    if (tab === 'notes') return 'Doctor or Nurse (Clinical Care)';
+    if (['users', 'audit', 'emergency', 'analytics'].includes(tab)) return 'Administrator';
+    return 'Authorized Staff';
+  };
+
   // Not authenticated or explicitly on login tab? Show Login
   if (!isAuthenticated || currentTab === 'login') {
     return (
       <Login 
         onLoginSuccess={() => {
           window.location.hash = '';
-          setCurrentTab('dashboard');
+          const savedRole = localStorage.getItem('pulseguard_role') || role;
+          setCurrentTab(savedRole === 'admin' ? 'analytics' : 'dashboard');
         }} 
       />
     );
@@ -89,7 +108,7 @@ function MainApp() {
       <DesignSystemPreview 
         onNavigateToApp={() => {
           window.location.hash = '';
-          setCurrentTab('dashboard');
+          setCurrentTab(role === 'admin' ? 'analytics' : 'dashboard');
         }} 
       />
     );
@@ -101,6 +120,8 @@ function MainApp() {
     setCurrentTab('patient-detail');
   };
 
+  const isCurrentTabAuthorized = canAccessTab(currentTab);
+
   return (
     <>
       <AppShell
@@ -111,58 +132,69 @@ function MainApp() {
           setCurrentTab('design-system');
         }}
       >
-        {/* View Router */}
-        {currentTab === 'dashboard' && (
-          <WardDashboard
-            beds={beds}
-            waveforms={waveforms}
-            onSelectBed={handleSelectBed}
-            onInjectHypoxia={() => injectHypoxia('04')}
-            onResetBeds={resetAllBeds}
+        {/* Strict Panel Isolation Barrier: if tab is forbidden, render AccessDenied */}
+        {!isCurrentTabAuthorized ? (
+          <AccessDenied
+            attemptedTab={currentTab}
+            requiredRole={getRequiredRole(currentTab)}
+            onGoHome={() => setCurrentTab(role === 'admin' ? 'analytics' : 'dashboard')}
           />
-        )}
+        ) : (
+          <>
+            {/* View Router for Authorized Features */}
+            {currentTab === 'dashboard' && (
+              <WardDashboard
+                beds={beds}
+                waveforms={waveforms}
+                onSelectBed={handleSelectBed}
+                onInjectHypoxia={() => injectHypoxia('04')}
+                onResetBeds={resetAllBeds}
+              />
+            )}
 
-        {currentTab === 'patient-detail' && (
-          <PatientDetail
-            bed={activeBed}
-            onBack={() => setCurrentTab('dashboard')}
-            onAcknowledgeTier2={acknowledgeTier2Alert}
-            onTriggerTier1Modal={(bed) => {
-              setSelectedBedId(bed.bedId);
-              setIsTier1ModalForcedOpen(true);
-            }}
-          />
-        )}
+            {currentTab === 'patient-detail' && (
+              <PatientDetail
+                bed={activeBed}
+                onBack={() => setCurrentTab(role === 'admin' ? 'analytics' : 'dashboard')}
+                onAcknowledgeTier2={acknowledgeTier2Alert}
+                onTriggerTier1Modal={(bed) => {
+                  setSelectedBedId(bed.bedId);
+                  setIsTier1ModalForcedOpen(true);
+                }}
+              />
+            )}
 
-        {currentTab === 'patients' && (
-          <PatientRoster
-            beds={beds}
-            onSelectBed={handleSelectBed}
-          />
-        )}
+            {currentTab === 'patients' && (
+              <PatientRoster
+                beds={beds}
+                onSelectBed={handleSelectBed}
+              />
+            )}
 
-        {currentTab === 'transfers' && (
-          <TransferQueue />
-        )}
+            {currentTab === 'transfers' && (
+              <TransferQueue />
+            )}
 
-        {currentTab === 'notes' && (
-          <ClinicalNotesPage beds={beds} />
-        )}
+            {currentTab === 'notes' && (
+              <ClinicalNotesPage beds={beds} />
+            )}
 
-        {currentTab === 'users' && (
-          <UserManagement />
-        )}
+            {currentTab === 'users' && (
+              <UserManagement />
+            )}
 
-        {currentTab === 'audit' && (
-          <AuditLogViewer />
-        )}
+            {currentTab === 'audit' && (
+              <AuditLogViewer />
+            )}
 
-        {currentTab === 'emergency' && (
-          <EmergencyAccess />
-        )}
+            {currentTab === 'emergency' && (
+              <EmergencyAccess />
+            )}
 
-        {currentTab === 'analytics' && (
-          <AnalyticsDashboard />
+            {currentTab === 'analytics' && (
+              <AnalyticsDashboard />
+            )}
+          </>
         )}
       </AppShell>
 

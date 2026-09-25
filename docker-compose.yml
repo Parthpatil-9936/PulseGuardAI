@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL 16 — Cryptographic Audit Ledger & Hospital Schema
+  postgres:
+    image: postgres:16-alpine
+    container_name: pulseguard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: pulseguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Redis 7.x — 10-Second Volatile FIFO Telemetry Ring Buffer
+  redis:
+    image: redis:7-alpine
+    container_name: pulseguard-redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # 3. FastAPI Edge Gateway — Python 3.11 AsyncIO Core Engine
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pulseguard-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@postgres:5432/pulseguard
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: pulseguard-super-secret-jwt-key-nexhack-2026-critical-care
+      ACCESS_TOKEN_EXPIRE_MINUTES: 720
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
