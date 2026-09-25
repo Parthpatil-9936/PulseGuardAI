@@ -250,8 +250,8 @@ def train_autoencoder(
     logger.info(f"  Final Offset: {final_offset}")
     logger.info(f"  Final Scale:  {final_scale}")
 
-    # 5. Save Checkpoint (both .pt and .pkl formats)
-    logger.info("\n--- 5. Saving Checkpoint ---")
+    # 5. Save Checkpoint (.pt format) and Calibration Constants (.json format)
+    logger.info("\n--- 5. Saving Checkpoint & Calibration Metadata ---")
     output_checkpoint.parent.mkdir(parents=True, exist_ok=True)
     checkpoint = {
         "model_state_dict": model.state_dict(),
@@ -267,11 +267,20 @@ def train_autoencoder(
     torch.save(checkpoint, output_checkpoint)
     logger.info(f"[SUCCESS] Saved PyTorch model checkpoint to {output_checkpoint}")
 
-    import pickle
-    pkl_checkpoint = output_checkpoint.with_suffix(".pkl")
-    with open(pkl_checkpoint, "wb") as f:
-        pickle.dump(checkpoint, f)
-    logger.info(f"[SUCCESS] Saved pickle model checkpoint to {pkl_checkpoint}")
+    # Save calibration constants to secure JSON format (no pickle deserialization risk)
+    calib_checkpoint = output_checkpoint.with_name("calibration_v1.json")
+    calib_data = {
+        "channels": CHANNEL_NAMES,
+        "min_bounds": MIN_BOUNDS,
+        "max_bounds": MAX_BOUNDS,
+        "per_channel_offset": final_offset,
+        "per_channel_scale": final_scale,
+        "latent_dim": 16,
+        "window_size": WINDOW_SIZE,
+    }
+    with open(calib_checkpoint, "w", encoding="utf-8") as f:
+        json.dump(calib_data, f, indent=2)
+    logger.info(f"[SUCCESS] Saved secure JSON calibration constants to {calib_checkpoint}")
 
 
 if __name__ == "__main__":

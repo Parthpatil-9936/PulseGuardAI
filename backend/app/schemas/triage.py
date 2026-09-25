@@ -24,3 +24,6 @@ class TriageDecision(BaseModel):
     hard_breach: bool = Field(False, description="True if a hard physiological threshold was breached")
     raw_tier: int = Field(..., ge=1, le=3, description="Pre-hysteresis raw tier decision")
     schema_version: str = "1.0"
+    audio_muted: bool = Field(False, description="Whether audio siren is currently muted under clamped ceiling")
+    remaining_mute_s: int = Field(0, description="Remaining clamped mute duration in seconds")
+    visual_escalation: bool = Field(False, description="Visual alarm escalation flag (unsuppressable even when audio is muted)")

@@ -66,14 +66,66 @@ def test_per_channel_mse_calculation():
 
 
 def test_saved_checkpoint_structure():
-    """Test saved autoencoder_v1.pt checkpoint contains required fields."""
+    """Test saved autoencoder_v1.pt and calibration_v1.json contain required fields without pickle."""
     ckpt_path = Path("backend/app/ml/autoencoder_v1.pt")
     assert ckpt_path.exists(), "autoencoder_v1.pt checkpoint must exist"
 
-    ckpt = torch.load(ckpt_path, weights_only=False)
+    # Verify checkpoint loads securely with weights_only=True (zero code execution risk)
+    ckpt = torch.load(ckpt_path, weights_only=True)
     assert "model_state_dict" in ckpt
     assert "channels" in ckpt and ckpt["channels"] == ["hr", "spo2", "bp_sys"]
     assert "per_channel_offset" in ckpt
     assert "per_channel_scale" in ckpt
     assert "min_bounds" in ckpt
     assert "max_bounds" in ckpt
+
+    # Verify no legacy pickle file exists
+    pkl_path = Path("backend/app/ml/autoencoder_v1.pkl")
+    assert not pkl_path.exists(), "autoencoder_v1.pkl must be deleted to eliminate pickle deserialization risks"
+
+    # Verify calibration_v1.json exists and is valid JSON
+    import json
+    calib_path = Path("backend/app/ml/calibration_v1.json")
+    assert calib_path.exists(), "calibration_v1.json must exist"
+    with open(calib_path, "r", encoding="utf-8") as f:
+        calib = json.load(f)
+    assert "per_channel_offset" in calib
+    assert "per_channel_scale" in calib
+
+
+def test_batchnorm_single_sample_inference_consistency():
+    """Regression test: model.eval() produces identical output on batch_size=1 and guards against BatchNorm train bugs."""
+    ckpt_path = Path("backend/app/ml/autoencoder_v1.pt")
+    ckpt = torch.load(ckpt_path, weights_only=True)
+
+    model = TelemetryAutoencoder(in_channels=3, latent_dim=ckpt.get("latent_dim", 16))
+    model.load_state_dict(ckpt["model_state_dict"])
+
+    # Startup assertion: model must be in evaluation mode
+    model.eval()
+    assert model.training is False, "Autoencoder model must be in eval mode (model.training == False)"
+
+    # Single-sample input (batch_size=1, 3 channels, 100 timesteps)
+    torch.manual_seed(42)
+    single_input = torch.rand(1, 3, 100)
+
+    with torch.no_grad():
+        out1 = model(single_input)
+        out2 = model(single_input)
+
+    # In eval mode with frozen running stats, outputs must be identical across calls
+    assert torch.equal(out1, out2), (
+        "Inference outputs for batch_size=1 must be identical across successive forward passes"
+    )
+
+    # In train mode, BatchNorm dynamically calculates batch stats and updates running statistics,
+    # mutating state across calls. This proves why model.eval() and startup assertions are critical.
+    model.train()
+    assert model.training is True
+    initial_running_mean = model.encoder_conv[1].running_mean.clone()
+    _ = model(single_input)
+    updated_running_mean = model.encoder_conv[1].running_mean.clone()
+    assert not torch.equal(initial_running_mean, updated_running_mean), (
+        "Train mode mutates BatchNorm running stats on batch_size=1, proving why eval() is vital"
+    )
+

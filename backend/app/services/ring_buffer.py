@@ -62,7 +62,9 @@ class TelemetryRingBuffer:
         self._bed_locks: Dict[str, asyncio.Lock] = {}
         self._fallback_deques: Dict[str, deque] = {}
         self._using_fallback: Dict[str, bool] = {}
+        self._known_beds: set[str] = set()
         self._reset_callbacks: List[Callable[[str], Any]] = []
+        self._fallback_callbacks: List[Callable[[List[str]], Any]] = []
 
     def _get_bed_lock(self, bed_id: str) -> asyncio.Lock:
         """Retrieve or create isolated per-bed asyncio lock."""
@@ -80,6 +82,74 @@ class TelemetryRingBuffer:
         """Register a callback function to be invoked when a bed buffer is reset."""
         if callback not in self._reset_callbacks:
             self._reset_callbacks.append(callback)
+
+    def register_fallback_callback(self, callback: Callable[[List[str]], Any]) -> None:
+        """Register a callback function to be invoked on Redis->deque fallback transition."""
+        if callback not in self._fallback_callbacks:
+            self._fallback_callbacks.append(callback)
+
+    async def _handle_redis_failure(
+        self, trigger_bed_id: Optional[str] = None, exc: Optional[Exception] = None
+    ) -> List[str]:
+        """Coordinate Redis->deque fallback transition across all known beds.
+
+        REDIS BLAST RADIUS INVARIANT:
+        When Redis crashes, the volatile 10-second rolling window is wiped for ALL beds
+        sharing this Redis instance. ML scoring goes dark across the entire ward during the
+        ~10s refill window. Hard thresholds continue evaluating per tick with zero gap.
+        """
+        self._redis_connected = False
+        self._redis_failed = True
+        self._redis = None
+
+        if trigger_bed_id:
+            self._known_beds.add(trigger_bed_id)
+
+        affected_beds = (
+            sorted(list(self._known_beds))
+            if self._known_beds
+            else ([trigger_bed_id] if trigger_bed_id else [])
+        )
+
+        for b in affected_beds:
+            self._using_fallback[b] = True
+            deq = self._get_fallback_deque(b)
+            deq.clear()
+
+        # Emit structured log / event on fallback transition
+        logger.error(
+            f"[ring_buffer_fallback_event] REDIS CRASH / FALLBACK TRIGGERED | "
+            f"status=DEGRADED | blast_radius={len(affected_beds)} beds | "
+            f"affected_bed_ids={affected_beds} | "
+            "ml_state=DARK (refilling 100-sample window ~10s) | "
+            "safety_net=ACTIVE (hard thresholds continue per tick with zero gap) | "
+            f"cause={exc or 'ManualChaosInjection'}"
+        )
+
+        # Wire through the reset event mechanism for every affected bed
+        for b in affected_beds:
+            await self._trigger_reset_callbacks(b)
+
+        # Trigger registered fallback callbacks
+        for cb in self._fallback_callbacks:
+            try:
+                if asyncio.iscoroutinefunction(cb):
+                    await cb(affected_beds)
+                else:
+                    cb(affected_beds)
+            except Exception as e:
+                logger.error(f"[ring_buffer] Error in fallback callback: {e}")
+
+        return affected_beds
+
+    async def trigger_redis_crash(
+        self, affected_bed_ids: Optional[List[str]] = None
+    ) -> List[str]:
+        """Manually trigger a simulated Redis crash across multiple beds (for chaos testing)."""
+        if affected_bed_ids:
+            for b in affected_bed_ids:
+                self._known_beds.add(b)
+        return await self._handle_redis_failure(exc=ConnectionError("Simulated Redis Chaos Outage"))
 
     async def _get_redis_client(self) -> Optional[Any]:
         """Lazy connection to Redis client with error handling."""
@@ -132,6 +202,7 @@ class TelemetryRingBuffer:
 
         Guarantees concurrency isolation using per-bed asyncio.Lock.
         """
+        self._known_beds.add(bed_id)
         async with self._get_bed_lock(bed_id):
             sample = {
                 "hr": float(hr),
@@ -162,13 +233,9 @@ class TelemetryRingBuffer:
                     except (RedisError, OSError, ConnectionError) as exc:
                         logger.error(
                             f"[ring_buffer] Redis crash/connection error on bed {bed_id}: {exc}! "
-                            "Switching backing store to in-process deque & triggering cold-start reset."
+                            "Triggering coordinated fallback transition for all beds."
                         )
-                        # Requirement 4: On Redis crash -> switch to deque & reset state
-                        self._using_fallback[bed_id] = True
-                        deq = self._get_fallback_deque(bed_id)
-                        deq.clear()
-                        await self._trigger_reset_callbacks(bed_id)
+                        await self._handle_redis_failure(trigger_bed_id=bed_id, exc=exc)
 
             # Fallback path: collections.deque
             deq = self._get_fallback_deque(bed_id)
@@ -180,6 +247,7 @@ class TelemetryRingBuffer:
     # ----------------------------------------------------------------------
     async def is_ready(self, bed_id: str) -> bool:
         """Return True only once 100 samples are present in the buffer."""
+        self._known_beds.add(bed_id)
         async with self._get_bed_lock(bed_id):
             use_fallback = self._using_fallback.get(bed_id, False)
             if use_fallback or self._redis is None:
@@ -198,12 +266,9 @@ class TelemetryRingBuffer:
             except (RedisError, OSError, ConnectionError) as exc:
                 logger.error(
                     f"[ring_buffer] Redis error during is_ready check on bed {bed_id}: {exc}. "
-                    "Resetting to deque fallback."
+                    "Triggering coordinated fallback transition for all beds."
                 )
-                self._using_fallback[bed_id] = True
-                deq = self._get_fallback_deque(bed_id)
-                deq.clear()
-                await self._trigger_reset_callbacks(bed_id)
+                await self._handle_redis_failure(trigger_bed_id=bed_id, exc=exc)
                 return False
 
     # ----------------------------------------------------------------------
@@ -217,6 +282,7 @@ class TelemetryRingBuffer:
         Row 1: SpO2
         Row 2: BP_sys
         """
+        self._known_beds.add(bed_id)
         async with self._get_bed_lock(bed_id):
             ready = await self._is_ready_unlocked(bed_id)
             if not ready:
@@ -234,12 +300,9 @@ class TelemetryRingBuffer:
                 except (RedisError, OSError, ConnectionError) as exc:
                     logger.error(
                         f"[ring_buffer] Redis error during get_window for bed {bed_id}: {exc}. "
-                        "Fallback to deque."
+                        "Triggering coordinated fallback transition for all beds."
                     )
-                    self._using_fallback[bed_id] = True
-                    deq = self._get_fallback_deque(bed_id)
-                    deq.clear()
-                    await self._trigger_reset_callbacks(bed_id)
+                    await self._handle_redis_failure(trigger_bed_id=bed_id, exc=exc)
                     return None
             else:
                 deq = self._get_fallback_deque(bed_id)
@@ -275,6 +338,7 @@ class TelemetryRingBuffer:
     # ----------------------------------------------------------------------
     async def reset(self, bed_id: str) -> None:
         """Immediately clear bed buffer and personalization state, firing reset callbacks."""
+        self._known_beds.add(bed_id)
         async with self._get_bed_lock(bed_id):
             logger.info(f"[ring_buffer] Resetting buffer and state for bed {bed_id}")
 

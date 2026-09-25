@@ -4,7 +4,7 @@
 **Author:** Edge ML & Signal Processing Engineering Team  
 **System Target:** PulseGuard-AI Edge Gateway (NexHack 2.0 Hackathon Scope)  
 **Date:** September 2026  
-**Status:** Verified & Checkpointed (`autoencoder_v1.pt` & `autoencoder_v1.pkl`)
+**Status:** Verified & Checkpointed (`autoencoder_v1.pt` & `calibration_v1.json`)
 
 ---
 
@@ -163,9 +163,9 @@ Autoencoders are **unsupervised reconstruction models**; their performance is ev
 
 ## 5. Saved Checkpoint Artifacts
 
-The final model and calibration dictionary are saved under `backend/app/ml/` in dual formats:
-- 📦 [backend/app/ml/autoencoder_v1.pt](file:///c:/Users/ASUS/OneDrive/Desktop/nexhack_ml/backend/app/ml/autoencoder_v1.pt) (PyTorch Format)
-- 📦 [backend/app/ml/autoencoder_v1.pkl](file:///c:/Users/ASUS/OneDrive/Desktop/nexhack_ml/backend/app/ml/autoencoder_v1.pkl) (Pickle Format)
+The final model and calibration dictionary are saved under `backend/app/ml/` without pickle deserialization risk:
+- 📦 `backend/app/ml/autoencoder_v1.pt` (PyTorch Format, loaded with `weights_only=True`)
+- 📦 `backend/app/ml/calibration_v1.json` (Human-Readable JSON Calibration Metadata)
 
 ### Checkpoint Payload Dictionary:
 ```python

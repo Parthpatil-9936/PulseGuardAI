@@ -32,9 +32,9 @@ def test_telemetry_tick_pydantic_bounds_valid():
 
 
 def test_telemetry_tick_invalid_bed_id():
-    """Test invalid bed_id fails regex pattern ^bed-(0[1-9]|10)$."""
+    """Test invalid bed_id fails pattern matching configured MAX_BEDS."""
     raw = {
-        "bed_id": "bed-99",  # Invalid
+        "bed_id": "bed-99",  # Invalid under default MAX_BEDS=10
         "ts": "2026-09-18T01:46:16.123Z",
         "hr": 78,
         "spo2": 98,
@@ -44,6 +44,46 @@ def test_telemetry_tick_invalid_bed_id():
     }
     with pytest.raises(Exception):
         TelemetryTick.model_validate(raw)
+
+
+def test_configurable_bed_capacity_boundary_and_rejection():
+    """Test bed_id validation enforces configurable MAX_BEDS boundary and rejects just-above-max."""
+    from backend.app.core.config import settings
+
+    base_payload = {
+        "ts": "2026-09-18T01:46:16.123Z",
+        "hr": 75,
+        "spo2": 98,
+        "bp_sys": 120,
+        "bp_dia": 80,
+        "seq": 100,
+    }
+
+    # Case 1: Default MAX_BEDS=10
+    original_max = settings.MAX_BEDS
+    try:
+        settings.MAX_BEDS = 10
+        # Boundary: bed-10 must be accepted
+        tick_boundary = TelemetryTick.model_validate({**base_payload, "bed_id": "bed-10"})
+        assert tick_boundary.bed_id == "bed-10"
+
+        # Just above max: bed-11 must be rejected
+        with pytest.raises(Exception):
+            TelemetryTick.model_validate({**base_payload, "bed_id": "bed-11"})
+
+        # Case 2: Configurable capacity expansion (e.g. MAX_BEDS=15)
+        settings.MAX_BEDS = 15
+        # Boundary: bed-15 must be accepted
+        tick_15 = TelemetryTick.model_validate({**base_payload, "bed_id": "bed-15"})
+        assert tick_15.bed_id == "bed-15"
+
+        # Just above max: bed-16 must be rejected
+        with pytest.raises(Exception):
+            TelemetryTick.model_validate({**base_payload, "bed_id": "bed-16"})
+
+    finally:
+        settings.MAX_BEDS = original_max
+
 
 
 def test_telemetry_tick_biologically_impossible_bounds():
@@ -218,3 +258,68 @@ def test_ecg_lead_disconnect_tamper_flag():
     }
     res = service.process_raw_payload(raw)
     assert res[0].drift_flag == "tamper"
+
+
+def test_temperature_bounds_and_forward_fill_staleness():
+    """Test temperature is validated against biological bounds [30.0, 45.0] C,
+    forward-filled on sparse ticks, and tracked with temp_staleness_ms.
+    """
+    service = TelemetryIngestionService(reorder_buffer_size=1)
+    t0 = datetime.now(timezone.utc)
+
+    # 1. Valid physiological temperature passes
+    raw_valid = {
+        "bed_id": "bed-01",
+        "ts": t0.isoformat(),
+        "hr": 75,
+        "spo2": 98,
+        "bp_sys": 120,
+        "bp_dia": 80,
+        "temp": 36.6,
+        "seq": 1,
+    }
+    p1 = service.process_raw_payload(raw_valid)[0]
+    assert p1.temp == 36.6
+    assert p1.staleness_ms["temp_staleness_ms"] == 0.0
+
+    # 2. Biologically impossible hypothermia (< 30.0 C) rejected
+    with pytest.raises(InvalidTelemetryError):
+        service.validate_raw_payload({
+            "bed_id": "bed-01",
+            "ts": t0.isoformat(),
+            "hr": 75,
+            "spo2": 98,
+            "bp_sys": 120,
+            "bp_dia": 80,
+            "temp": 28.5,  # Too low (< 30.0)
+            "seq": 2,
+        })
+
+    # 3. Biologically impossible hyperthermia (> 45.0 C) rejected
+    with pytest.raises(InvalidTelemetryError):
+        service.validate_raw_payload({
+            "bed_id": "bed-01",
+            "ts": t0.isoformat(),
+            "hr": 75,
+            "spo2": 98,
+            "bp_sys": 120,
+            "bp_dia": 80,
+            "temp": 46.5,  # Too high (> 45.0)
+            "seq": 3,
+        })
+
+    # 4. Sparse tick missing temperature forward-fills and tracks temp_staleness_ms
+    t1 = t0 + timedelta(milliseconds=750)
+    raw_missing_temp = {
+        "bed_id": "bed-01",
+        "ts": t1.isoformat(),
+        "hr": 76,
+        "spo2": 98,
+        "bp_sys": 121,
+        "bp_dia": 81,
+        "temp": None,
+        "seq": 4,
+    }
+    p2 = service.process_raw_payload(raw_missing_temp)[0]
+    assert p2.temp == 36.6, "Missing temp must be forward-filled from previous tick"
+    assert p2.staleness_ms["temp_staleness_ms"] == pytest.approx(750.0, abs=10.0)

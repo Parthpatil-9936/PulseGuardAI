@@ -7,15 +7,53 @@ field constraints and enriched processed telemetry ticks.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from typing import Dict, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
+
+from backend.app.core.config import settings
+
+
+def get_bed_id_pattern(max_beds: Optional[int] = None) -> str:
+    """Generate regex pattern matching bed IDs from 1 up to max_beds (zero-padded).
+
+    Examples:
+      max_beds = 5  -> ^bed-0[1-5]$
+      max_beds = 10 -> ^bed-(0[1-9]|10)$
+      max_beds = 12 -> ^bed-(0[1-9]|1[0-2])$
+      max_beds = 25 -> ^bed-(0[1-9]|1[0-9]|2[0-5])$
+    """
+    if max_beds is None:
+        max_beds = settings.MAX_BEDS
+
+    if max_beds < 1:
+        raise ValueError("max_beds must be at least 1")
+    if max_beds <= 9:
+        return rf"^bed-0[1-{max_beds}]$"
+
+    pad_len = max(2, len(str(max_beds)))
+    if max_beds < 100:
+        tens = max_beds // 10
+        rem = max_beds % 10
+        subpatterns = ["0[1-9]"]
+        if tens == 2:
+            subpatterns.append("1[0-9]")
+        elif tens > 2:
+            subpatterns.append(f"[1-{tens - 1}][0-9]")
+        if rem == 0:
+            subpatterns.append(f"{tens}0")
+        else:
+            subpatterns.append(f"{tens}[0-{rem}]")
+        return rf"^bed-({'|'.join(subpatterns)})$"
+    else:
+        return rf"^bed-\d{{{pad_len}}}$"
 
 
 class TelemetryTick(BaseModel):
     """Pydantic TelemetryTick schema matching Section 3.1 field constraints.
 
     Section 3.1 Constraints:
-    - bed_id: string, regex ^bed-(0[1-9]|10)$
+    - bed_id: string, regex dynamically generated from settings.MAX_BEDS (default ^bed-(0[1-9]|10)$)
     - ts: ISO-8601 UTC timestamp, millisecond precision
     - hr: integer, valid range [0, 300] bpm
     - spo2: integer, valid range [0, 100] %
@@ -27,8 +65,7 @@ class TelemetryTick(BaseModel):
 
     bed_id: str = Field(
         ...,
-        pattern=r"^bed-(0[1-9]|10)$",
-        description="Bed identifier matching ^bed-(0[1-9]|10)$",
+        description="Bed identifier matching configured MAX_BEDS pattern (e.g. ^bed-(0[1-9]|10)$)",
     )
     ts: datetime = Field(..., description="ISO-8601 UTC timestamp")
     hr: Optional[int] = Field(
@@ -44,12 +81,29 @@ class TelemetryTick(BaseModel):
         None, ge=0, le=200, description="Diastolic blood pressure in mmHg [0, 200]"
     )
     temp: Optional[float] = Field(
-        None, ge=20.0, le=45.0, description="Body temperature in Celsius [20.0, 45.0]"
+        None, ge=30.0, le=45.0, description="Body temperature in Celsius [30.0, 45.0]"
     )
     ecg_lead_ok: bool = Field(
         True, description="Hardware electrode impedance status"
     )
     seq: int = Field(..., ge=0, description="Monotonic sequence counter")
+
+    @field_validator("bed_id")
+    def validate_bed_id(cls, v: str) -> str:
+        """Validate bed_id matches regex generated from configured settings.MAX_BEDS."""
+        max_beds = settings.MAX_BEDS
+        pattern = get_bed_id_pattern(max_beds)
+        if not re.match(pattern, v):
+            raise ValueError(
+                f"Bed ID '{v}' does not match expected pattern {pattern} (configured MAX_BEDS={max_beds})"
+            )
+        if max_beds >= 100:
+            num = int(v.split("-")[1])
+            if not (1 <= num <= max_beds):
+                raise ValueError(
+                    f"Bed ID '{v}' exceeds configured maximum bed capacity ({max_beds})"
+                )
+        return v
 
     @field_validator("ts", mode="before")
     def parse_iso_timestamp(cls, v: object) -> datetime:

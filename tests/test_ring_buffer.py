@@ -137,3 +137,38 @@ def test_redis_crash_fallback_resets_state():
         assert await buffer.get_window(bed_id) is None
 
     asyncio.run(_test())
+
+
+def test_redis_crash_blast_radius_multi_bed():
+    """Test Redis crash wipes buffer and resets cold-start state for ALL beds sharing instance."""
+
+    async def _test():
+        buffer = TelemetryRingBuffer()
+        beds = ["bed-01", "bed-02", "bed-03"]
+
+        reset_events = []
+        fallback_events = []
+
+        buffer.register_reset_callback(lambda b: reset_events.append(b))
+        buffer.register_fallback_callback(lambda affected: fallback_events.extend(affected))
+
+        # Fill all 3 beds to 100 samples
+        for b in beds:
+            for i in range(100):
+                await buffer.push_tick(b, hr=75.0, spo2=98.0, bp_sys=120.0, seq=i + 1)
+            assert await buffer.is_ready(b) is True, f"{b} must be ready after 100 samples"
+
+        # Trigger coordinated Redis crash
+        affected = await buffer.trigger_redis_crash()
+        assert set(affected) == set(beds), "Blast radius must include all known beds"
+
+        # All beds must simultaneously flip is_ready to False (ML goes dark)
+        for b in beds:
+            assert await buffer.is_ready(b) is False, f"{b} must flip is_ready to False after Redis crash"
+            assert await buffer.get_window(b) is None
+
+        # Reset callbacks must have fired for all beds
+        assert set(reset_events) == set(beds)
+        assert set(fallback_events) == set(beds)
+
+    asyncio.run(_test())

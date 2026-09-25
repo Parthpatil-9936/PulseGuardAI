@@ -44,7 +44,20 @@ $$\text{scaled}_c = \text{clip}\left(\frac{\text{raw}_c - \text{min}_c}{\text{ma
 | **Channel 1** | SpO2 (`spo2`) | % | 0.0 | 100.0 |
 | **Channel 2** | Systolic BP (`bp_sys`) | mmHg | 0.0 | 300.0 |
 
-### 2.3 PyTorch Model Tensor Shape
+### 2.3 Non-Model Vitals: Scope & Architectural Rationale
+
+#### Temperature (`temp`): Scope & Ingestion Forward-Fill
+- **Biological Bounds:** $[30.0^\circ\text{C}, 45.0^\circ\text{C}]$. Values outside this survivability range are rejected by Pydantic validation (`InvalidTelemetryError`).
+- **Ingestion & Staleness:** Temperature is a slow-arriving metabolic vital sampled at sparse intervals. `TelemetryIngestionService` forward-fills missing values from `last_known_vitals` (with baseline fallback to $37.0^\circ\text{C}$) and tracks millisecond latency via `temp_staleness_ms` in `staleness_ms`.
+- **Deliberate Exclusion from 1D-CNN Autoencoder:** Temperature is collected, persisted, and returned via `GET /patients/{id}` for clinical chart display, but is **NOT** fed into the 10-second autoencoder. Temperature evolves over minutes to hours rather than seconds. Feeding a quasi-static or low-frequency channel into a 10-second (100-sample @ 10 Hz) autoencoder trained on fast cardio-respiratory coupling would distort reconstruction error distributions and produce spurious anomaly factor attributions.
+
+#### Diastolic Blood Pressure (`bp_dia`): Clinical Storage & Hard-Threshold Tripwire
+- **Biological Bounds:** $[0, 200]\,\text{mmHg}$, strictly constrained such that $\text{bp\_dia} \le \text{bp\_sys}$.
+- **Storage & Display:** Forward-filled, persisted, and returned via `GET /patients/{id}` for clinical hemodynamics monitoring and rolling blood pressure charts.
+- **Role in ML Autoencoder:** **NOT** fed into the autoencoder tensor. The autoencoder is trained strictly on 3 channels (`hr`, `spo2`, `bp_sys`). Systolic blood pressure captures cardiac output and arterial pulsatile deflection; adding diastolic BP to a 10-second window introduces collinear redundancy without increasing anomaly sensitivity.
+- **Role in Critical Triage Safety Net:** Although excluded from the ML feature vector, $\text{bp\_dia}$ is **actively evaluated on every tick** in `check_hard_thresholds()`. A breach of $\text{BP}_{\text{dia}} > 120\,\text{mmHg}$ immediately triggers **Tier-1 Catastrophic Crisis** unconditionally from tick 1 with zero hysteresis delay. Thus, `bp_dia` is fully operational as a life-safety tripwire.
+
+### 2.4 PyTorch Model Tensor Shape
 
 The autoencoder accepts a 3D float32 PyTorch Tensor representing a 10-second rolling window (100 timesteps @ 10 Hz):
 
@@ -77,12 +90,16 @@ Output Tensor Shape: `(batch_size, 3)` where:
 
 ### 3.3 Normalized Anomaly Score & Factor Attribution
 
-Each channel's raw MSE is normalized using multi-seed calibrated `offset` ($P_5$) and `scale` ($P_{95} - P_5$) constants saved in `autoencoder_v1.pt`:
+Each channel's raw MSE is normalized using multi-seed calibrated `offset` ($P_5$) and `scale` ($P_{95} - P_5$) constants saved in `calibration_v1.json` (and `autoencoder_v1.pt`):
 
 $$\text{norm\_score}_c = \text{clip}\left(\frac{\text{MSE}_c - \text{offset}_c}{\text{scale}_c}, 0.0, 1.0\right)$$
 
 - **Overall ML Confidence Score**: $\text{ml\_score} = \max\left(\text{norm\_score}_{\text{hr}}, \text{norm\_score}_{\text{spo2}}, \text{norm\_score}_{\text{bp\_sys}}\right) \in [0.0, 1.0]$
 - **Factor Attribution**: `attributing_vital` = channel name with highest normalized score (`"hr"`, `"spo2"`, or `"bp_sys"`).
+
+### 3.4 Security & Inference Execution Guarantees
+- **Zero-Trust Checkpointing:** No pickle deserialization is used anywhere in the inference path. Checkpoint weights are saved in PyTorch format (`autoencoder_v1.pt`) loaded strictly with `weights_only=True` (eliminating arbitrary code execution risks), while calibration parameters reside in transparent JSON (`calibration_v1.json`).
+- **BatchNorm & Determinism Protection:** Model inference is strictly executed in evaluation mode (`model.eval()`) wrapped in `with torch.no_grad():`. A mandatory startup assertion enforces `model.training == False` before any telemetry traffic is accepted, preventing single-sample (`batch_size=1`) BatchNorm running-statistic mutation bugs.
 
 ---
 
@@ -102,6 +119,9 @@ The `TriageService` evaluates hard physiological thresholds alongside ML scores 
   "is_cold_start": false,
   "hard_breach": false,
   "raw_tier": 2,
+  "audio_muted": false,
+  "remaining_mute_s": 0,
+  "visual_escalation": false,
   "schema_version": "1.0"
 }
 ```
@@ -110,7 +130,7 @@ The `TriageService` evaluates hard physiological thresholds alongside ML scores 
 
 | Field Name | Type | Description |
 |---|---|---|
-| `bed_id` | string | Bed identifier matching `^bed-(0[1-9]\|10)$` |
+| `bed_id` | string | Bed identifier matching configured pattern generated from `settings.MAX_BEDS` (default: `^bed-(0[1-9]\|10)$`) |
 | `ts` | string (ISO-8601) | Timestamp of evaluated tick |
 | `tier` | integer | Alert Tier: `1` (Catastrophic Red), `2` (Warning Yellow), `3` (Baseline Green) |
 | `confidence` | float | Normalized ML anomaly score ($0.0 - 1.0$) |
@@ -119,6 +139,10 @@ The `TriageService` evaluates hard physiological thresholds alongside ML scores 
 | `drift_flag` | string | Sensor pre-filter status: `"none"`, `"drift"`, `"tamper"` |
 | `is_cold_start` | boolean | `true` if bed buffer has $<100$ samples (cold start calibration mode) |
 | `hard_breach` | boolean | `true` if a hard physiological safety threshold was breached |
+| `raw_tier` | integer | Pre-hysteresis raw tier decision (`1`, `2`, or `3`) |
+| `audio_muted` | boolean | `true` if auditory siren is currently muted under server-enforced $\le 300\text{s}$ ceiling |
+| `remaining_mute_s` | integer | Remaining clamped mute duration in seconds before forced unmute |
+| `visual_escalation` | boolean | `true` if visual alert banner is escalated (unsuppressable even while audio is silenced) |
 
 ---
 
@@ -126,7 +150,9 @@ The `TriageService` evaluates hard physiological thresholds alongside ML scores 
 
 ```
 [ Raw JSON Tick ] ──► [ Scale [0,1] ] ──► [ (3,100) Tensor ] ──► [ 1D-CNN Autoencoder ]
-                                                                        │
-                                                                        ▼
-[ TriageDecision JSON ] ◄── [ 3-Tier Matrix ] ◄── [ Per-Channel MSE ] ◄─┘
+(HR, SpO2, BP_sys)                              (HR, SpO2, BP_sys)              │
+                                                                                ▼
+[ TriageDecision JSON ] ◄── [ 3-Tier Matrix ] ◄── [ Per-Channel MSE ] ◄─────────┘
+(Hard Limits: SpO2, HR,      (OR Logic Safety Net)
+ BP_sys, BP_dia, Lead-Off)
 ```

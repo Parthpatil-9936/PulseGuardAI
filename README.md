@@ -1,4 +1,4 @@
-﻿# PulseGuard-AI
+# PulseGuard-AI
 
 ### **Deterministic Edge-Triage & DPDP-Compliant Resilience Gateway for Critical Care IoT**
 *Version 3.0 — Extended Hackathon Edition (NexHack 2.0)*
@@ -54,7 +54,8 @@
 
 ### 🛡️ Core System Invariants
 - **100% Local Critical Safety Path:** Zero WAN dependency for real-time detection, anomaly scoring, and alarm siren triggering. Local monitoring continues uninterrupted during complete external internet failure.
-- **Fail-Safe Deterministic OR Logic:** Hard physiological thresholds (e.g., $SpO_2 < 85\%$, Extreme Tachycardia/Bradycardia) run alongside ML anomaly scoring with strict `OR` Boolean logic. **A machine learning model can NEVER suppress a hard-threshold vital breach.**
+- **Fail-Safe Deterministic OR Logic:** Hard physiological and hardware thresholds ($SpO_2 < 85\%$, HR $< 20$ or $> 220\,\text{bpm}$, Profound Hypotension with $\text{BP}_{\text{sys}} < 60\,\text{mmHg}$, Hypertensive Crisis with $\text{BP}_{\text{sys}} > 200\,\text{mmHg}$ or $\text{BP}_{\text{dia}} > 120\,\text{mmHg}$, and Hardware ECG Lead Disconnect $\text{ecg\_lead\_ok} == \text{false}$) evaluate unconditionally on every tick with zero hysteresis delay and run alongside ML anomaly scoring with strict `OR` Boolean logic. **A machine learning model can NEVER suppress a hard-threshold vital breach or lead disconnect.**
+- **Deterministic Mute Clamping & Persistent Visual Escalation:** Auditory sirens can be temporarily paused for bedside clinical intervention, but the duration is strictly hard-capped server-side at a maximum of **300 seconds (5 minutes)** with forced automatic unmute. Visual alarm escalation remains **unsuppressable** and continuously prominent on all clinician dashboards while audio is silenced.
 - **Sub-5ms Scoring Target:** The critical edge scoring path executes in $<5\,\text{ms}$ on commodity edge hardware.
 - **Fail-Closed for Security, Fail-Safe for Safety:** Authorization strictly fails closed at the backend layer, while the physiological alarm path falls back to resilient local ring buffers if upstream services crash.
 
@@ -69,7 +70,7 @@ Version 3.0 extends the deterministic v2.0 edge triage engine into a full **Hosp
 - ⏳ **Break-Glass Emergency Temporary Access:** Admin-provisioned, time-bounded emergency patient access with mandatory clinical rationale, automated session expiration, and audit logging.
 - 🧠 **Explainable Alert Context (XAI):** Real-time anomaly scores ($0.0 - 1.0$) with dynamic factor attribution (e.g., rapid $SpO_2$ decline coupled with HR acceleration) clearly distinguished from deterministic threshold violations.
 - 📝 **Shift Handover Summaries & Clinical Notes:** Automated rolling-window patient handover summaries aggregating alerts, vitals, and physician/nurse observation logs.
-- 🔕 **Server-Enforced Mute Clamping:** Anti-tamper alarm silencing capped at a maximum of **300 seconds (5 minutes)** with automatic siren unmute.
+- 🔕 **Server-Enforced Mute Clamping & Persistent Visual Escalation:** Bedside auditory siren silencing is capped server-side at a maximum of **300 seconds (5 minutes)** with forced automatic unmute. Visual alarm escalation remains unsuppressable and persistently prominent across all dashboards throughout the muted period.
 - 🔗 **DPDP-Compliant SHA-256 Audit Ledger:** Cryptographically linked, tamper-evident audit chain verifying all sensitive actions.
 
 ---
@@ -112,7 +113,7 @@ PulseGuard-AI routes all incoming telemetry through a tiered triage cascade to e
 
 | Tier | Classification | Trigger Condition | System Action | Clinician Workflow |
 | :--- | :--- | :--- | :--- | :--- |
-| **Tier 1** | **Critical Alarm** | Hard threshold breach ($SpO_2 < 85\%$, HR extreme) **OR** ML Anomaly Score $> 0.90$ | Instant local audio/visual siren; pushes immediate WebSocket broadcast | **Unsuppressable.** Cannot be disabled by UI. Server-side auto-unmute clamped to $\le 300\text{s}$. |
+| **Tier 1** | **Critical Alarm** | Hard threshold breach ($SpO_2 < 85\%$, $\text{HR} < 20$ or $> 220\,\text{bpm}$, $\text{BP}_{\text{sys}} < 60\,\text{mmHg}$, $\text{BP}_{\text{sys}} > 200\,\text{mmHg}$ or $\text{BP}_{\text{dia}} > 120\,\text{mmHg}$, Hardware Lead Disconnect $\text{ecg\_lead\_ok} == \text{false}$) **OR** ML Anomaly Score $> 0.90$ | Instant local audio/visual siren; pushes immediate WebSocket broadcast | **Unsuppressable Visual Escalation.** Visual alarm banner cannot be dismissed by UI. Auditory siren can be temporarily silenced for bedside care, strictly hard-capped server-side to $\le 300\text{s}$ with mandatory auto-unmute. |
 | **Tier 2** | **Warning / Drift** | 2+ vitals drifting simultaneously; ML Anomaly Score $0.50 - 0.90$ | Emits high-priority visual alert banner on assigned clinician’s dashboard | Requires active clinician acknowledgement with auditable timestamp. |
 | **Tier 3** | **Transient Noise** | Single brief spike / artifact; ML Anomaly Score $< 0.50$ | Suppressed from audible siren; incremented in noise-reduction counter | Logged silently to audit store; available for trend analytics. |
 
@@ -146,6 +147,7 @@ PulseGuard-AI incorporates the principles of India's **Digital Personal Data Pro
    Every sensitive clinician action (alert acknowledgement, transfer approval, emergency break-glass grant, alarm mute) generates an immutable, forward-linked hash entry:
    $$\text{Hash}_n = \text{SHA-256}\left(\text{Hash}_{n-1} + \text{Timestamp} + \text{Action} + \text{BedID} + \text{ClinicianID}\right)$$
    *Any post-hoc modification or record deletion breaks the hash chain, triggering an immediate alert on the Admin Dashboard.*
+4. **Zero-Trust Model Deserialization:** No pickle deserialization is used anywhere in the inference path. Model weights are stored in PyTorch checkpoint format loaded strictly with `weights_only=True`, and calibration parameters are stored in transparent JSON (`calibration_v1.json`), preventing arbitrary code execution vulnerabilities.
 
 ---
 
@@ -156,7 +158,7 @@ The edge gateway is engineered to degrade gracefully during hardware or network 
 | Subsystem Failure | Fail-Safe Behavior | Safety Guarantee |
 | :--- | :--- | :--- |
 | **WAN / Cloud Outage** | Gateway continues local telemetry triage, ML scoring, and bedside sirens; queues cloud sync locally. | **Zero interruption** to ward patient monitoring. |
-| **Redis Crash** | System automatically falls back to an internal Python in-process ring buffer (`aiosqlite` / deque). | Deterministic hard-threshold evaluation continues without dropping alarms. |
+| **Redis Crash** | Coordinated fallback to in-process `collections.deque` buffers; emits structured `[ring_buffer_fallback_event]`. **Blast radius:** volatile 10-second rolling windows are wiped for **ALL beds** sharing that Redis instance simultaneously, causing ML-based Tier 2/3 anomaly scoring to go **dark** across the ward during the ~10s refill window (100 ticks @ 10Hz). | **Zero gap in patient safety.** Deterministic hard-threshold evaluation ($SpO_2 < 85\%$, HR extremes, BP hypotension/crisis, lead disconnect) continues unconditionally per tick with 0 delay. Catastrophic Tier-1 sirens remain 100% active throughout the Redis crash and refill window. |
 | **PostgreSQL Crash** | Events buffer in memory and flush upon reconnection with a marked sequence gap. | Critical alarm sirens **never deadlock** on database write timeouts. |
 | **Sensor Disconnect / Packet Drop** | Sequence gap or timeout detected after 3 missed frames; displays explicit **`NO SIGNAL`** badge. | Prevents silent failure or misleading "normal/green" vital states. |
 | **WebSocket Disconnect** | Backend monitoring and siren routines persist; frontend displays banner and auto-reconnects with state rehydration. | Audio alarm triggers even if browser window freezes or closes. |
@@ -173,7 +175,7 @@ The RESTful API is structured for high throughput and modularity:
 | `POST` | `/auth/login` | Authenticate clinician/admin and issue JWT | Public |
 | `GET` | `/me` | Retrieve active authenticated session and permissions | Clinician / Admin |
 | `GET` | `/patients` | List accessible patients based on role and assignment | Role + Assignment |
-| `GET` | `/patients/{id}` | Retrieve patient summary, vitals history, and alerts | Role + Assignment |
+| `GET` | `/patients/{id}` | Retrieve patient clinical summary, multi-vital history (`hr`, `spo2`, `bp_sys`, `bp_dia`, `temp`), active alerts, and attribution | Role + Assignment |
 | `POST` | `/patients/{id}/notes` | Post clinical notes or nurse observations | Role Permitted |
 | `POST` | `/transfers` | Submit a doctor-to-doctor transfer request | Doctor |
 | `GET` | `/transfers?status=pending` | List pending transfer requests awaiting admin approval | Admin |
@@ -215,6 +217,8 @@ The modern React frontend features an interactive, dark-mode ICU command dashboa
 - **Python 3.11 or 3.12** *(Recommended — pre-compiled binary wheels for `scikit-learn`, `numpy`, and `asyncpg` are available).*
 - **Node.js 18+ & npm** (for the Vite + React frontend).
 - *(Optional)* **Docker & Docker Compose** for containerized ward host deployment.
+
+> **Configuration Note:** Ward bed capacity is fully configurable via the `MAX_BEDS` setting/environment variable (e.g. `export MAX_BEDS=20`, defaulting to 10) and is not a hard architectural ceiling. Dynamic telemetry schemas and ingestion validators automatically scale to match the configured limit.
 
 ---
 
@@ -305,7 +309,7 @@ You can validate key v3.0 requirements and fault behaviors live in the dashboard
 3. **Simulate Cloud/WAN Disconnect:**  
    Disconnect external Wi-Fi or trigger WAN outage mode. Notice the dashboard displays **Offline Sync Queued** while local vitals and audio sirens remain 100% active.
 4. **Test Mute Abuse Clamping:**  
-   Click the siren mute button. Observe the 5-minute countdown timer; notice that after 300 seconds, the system automatically unmutes if vitals remain in critical condition.
+   Click the siren mute button. Observe the 5-minute countdown timer and note that visual alarm escalation remains unsuppressable and prominently active while audio is silenced; notice that after 300 seconds, the system automatically forces an unmute if vitals remain in critical condition.
 5. **Doctor-to-Doctor Transfer:**  
    Log in as Doctor, request patient transfer to another physician. Log in as Admin to approve the request, and observe the instant atomic handover in the active patient grid.
 6. **Audit Ledger Verification:**  
