@@ -1,1 +1,1 @@
-# PulseGuard-AI Backend App Package
+"""PulseGuard-AI Backend Application Package."""

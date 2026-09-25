@@ -1,1 +1,4 @@
-# Core package
+"""PulseGuard-AI Core Package."""
+from app.core.config import Settings, settings
+
+__all__ = ["Settings", "settings"]

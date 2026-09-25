@@ -10,7 +10,8 @@ from app.core.config import settings
 from app.db.session import init_db, get_db, AsyncSessionLocal
 from app.db.seed import seed_initial_data
 from app.services.telemetry import telemetry_service
-from app.ml.inference import ML_ENGINE_STATUS
+from app.ml.model_loader import ml_manager
+from app.api.routes_triage import router as triage_router
 
 from app.api.routes_auth import router as auth_router
 from app.api.routes_patients import router as patients_router
@@ -36,6 +37,13 @@ async def lifespan(app: FastAPI):
 
     # Connect to Redis telemetry buffer (with ring buffer fallback)
     await telemetry_service.connect_redis()
+
+    # Load ML Model ONCE at startup via lifespan (non-blocking)
+    try:
+        await ml_manager.initialize_async()
+        logger.info("ML Triage Model successfully loaded in lifespan.")
+    except Exception as e:
+        logger.error(f"Could not load ML model during lifespan startup: {e}")
 
     # Start background telemetry generator loop
     generator_task = asyncio.create_task(telemetry_service.start_synthetic_generator())
@@ -75,6 +83,8 @@ app.include_router(alerts_router)
 app.include_router(admin_router)
 app.include_router(analytics_router)
 app.include_router(ws_router)
+app.include_router(triage_router, prefix="/api/v1")
+app.include_router(triage_router)
 
 
 @app.get("/health", tags=["System Health"])
@@ -119,7 +129,7 @@ async def health_check(db: AsyncSession = Depends(get_db)):
                 "status": "healthy",
                 "active_subscribers": len(telemetry_service.active_subscribers)
             },
-            "ml_engine": ML_ENGINE_STATUS
+            "ml_engine": ml_manager.get_health_status()
         },
         "edge_mode": {
             "zero_wan_dependency": True,

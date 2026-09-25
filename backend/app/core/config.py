@@ -1,5 +1,14 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+"""PulseGuard-AI Configuration Settings.
+
+Centralized configuration for system limits, networking, security, and thresholds.
+Combines environment variable overrides with clinical invariants and ML settings.
+"""
+
+from __future__ import annotations
+
+import os
 from typing import Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -9,6 +18,9 @@ class Settings(BaseSettings):
     VERSION: str = "3.0.0"
     API_V1_STR: str = "/api/v1"
     
+    # Ward Bed Limits
+    MAX_BEDS: int = 10
+
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./pulseguard.db"
     POSTGRES_SERVER: str = "localhost"
@@ -17,7 +29,9 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "pulseguard"
     POSTGRES_PORT: int = 5432
 
-    # Redis
+    # Redis Telemetry Buffer
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # JWT Security
@@ -37,6 +51,11 @@ class Settings(BaseSettings):
     TIER2_SPO2_THRESHOLD: float = 90.0     # Warning desaturation
     TIER2_HR_HIGH: float = 120.0           # Moderate tachycardia
     TIER2_HR_LOW: float = 50.0             # Moderate bradycardia
+
+    # ML Inference & Cache Settings
+    MODEL_PATH: str = "backend/app/ml/autoencoder_v1.pt"
+    CALIBRATION_PATH: str = "backend/app/ml/calibration_v1.json"
+    ML_PREDICTION_CACHE_TTL_SECONDS: int = 10
 
 
 settings = Settings()
