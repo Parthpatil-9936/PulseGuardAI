@@ -7,7 +7,7 @@ import React from 'react';
  * - tier2: #F59E0B (Warning)
  * - tier3: #94A3B8 (Muted/Notice)
  * - normal: #0EA5B7 (Normal telemetry)
- * Roles: admin, doctor, nurse
+ * Roles: admin, doctor
  */
 export const Badge = ({
   children,
@@ -37,7 +37,6 @@ export const Badge = ({
     // Roles
     admin: 'bg-purple-50 text-purple-700 border border-purple-200 font-semibold',
     doctor: 'bg-teal-50 text-[#0D8A9A] border border-teal-200 font-semibold',
-    nurse: 'bg-blue-50 text-[#2563EB] border border-blue-200 font-semibold',
 
     // System States
     online: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
@@ -55,7 +54,6 @@ export const Badge = ({
     'normal-solid': 'bg-white',
     admin: 'bg-purple-600',
     doctor: 'bg-[#0EA5B7]',
-    nurse: 'bg-[#3B82F6]',
     online: 'bg-emerald-500',
     offline: 'bg-rose-600',
     edge: 'bg-cyan-500',

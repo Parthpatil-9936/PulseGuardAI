@@ -17,18 +17,6 @@ export const DEMO_PROFILES = {
     assignedBeds: ['01', '02', '04', '07', '10'],
     description: 'Directs patient care, reviews XAI diagnostics, prescribes interventions, requests transfers.'
   },
-  nurse: {
-    id: 'usr_nur_01',
-    name: 'Priya Patel, RN',
-    email: 'priya.rn@pulseguard.icu',
-    defaultPassword: 'nurse123',
-    role: 'nurse',
-    title: 'Lead Critical Care Nurse',
-    department: 'Ward 4 Floor Nursing',
-    initials: 'PP',
-    assignedBeds: ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'],
-    description: 'Manages bedside telemetry, acknowledges alarms, records clinical observations, mutes alarms.'
-  },
   admin: {
     id: 'usr_adm_01',
     name: 'Alex Rivera',
@@ -46,7 +34,6 @@ export const DEMO_PROFILES = {
 // Strict Panel Isolation Matrix: which tabs are permitted for each role
 export const PANEL_PERMISSIONS = {
   doctor: ['dashboard', 'patient-detail', 'patients', 'transfers', 'notes', 'design-system'],
-  nurse: ['dashboard', 'patient-detail', 'patients', 'notes', 'design-system'],
   admin: ['analytics', 'transfers', 'users', 'audit', 'emergency', 'dashboard', 'patient-detail', 'patients', 'design-system']
 };
 

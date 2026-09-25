@@ -414,7 +414,7 @@ export const DesignSystemPreview = ({ onNavigateToApp }) => {
                   <span className="text-xs font-semibold text-slate-400 block mb-2 uppercase tracking-wider">Clinician Roles</span>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="doctor" dot>Dr. Attending</Badge>
-                    <Badge variant="nurse" dot>Staff Nurse</Badge>
+                    <Badge variant="doctor" dot>Dr. Fellow</Badge>
                     <Badge variant="admin" dot>System Admin</Badge>
                   </div>
                 </div>
@@ -451,7 +451,7 @@ export const DesignSystemPreview = ({ onNavigateToApp }) => {
                     options={[
                       { value: 'chen', label: 'Dr. Sarah Chen (Cardiology)' },
                       { value: 'vance', label: 'Dr. Marcus Vance (ICU Director)' },
-                      { value: 'patel', label: 'Nurse Priya Patel (Ward Lead)' },
+                      { value: 'rostova', label: 'Dr. Elena Rostova (Neuro ICU)' },
                     ]}
                   />
                 </div>
@@ -490,8 +490,8 @@ export const DesignSystemPreview = ({ onNavigateToApp }) => {
                       <Avatar name="Sarah Chen" role="doctor" size="md" status="online" />
                     </Tooltip>
 
-                    <Tooltip content="Nurse David Kim, RN • Ward 4 Floor" position="top">
-                      <Avatar name="David Kim" role="nurse" size="md" status="busy" />
+                    <Tooltip content="Dr. Elena Rostova, MD • Neuro ICU" position="top">
+                      <Avatar name="Elena Rostova" role="doctor" size="md" status="busy" />
                     </Tooltip>
 
                     <Tooltip content="Patient Bed 08 (J.R.)" position="top">

@@ -20,8 +20,8 @@ async def test_login_invalid_password(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_rbac_denial_admin_endpoint(client: AsyncClient, auth_headers):
-    # Nurse Carol attempts to access Admin-only /audit-logs
-    headers = auth_headers("nurse_1", "nurse")
+    # Doctor Alice attempts to access Admin-only /audit-logs -> 403 forbidden
+    headers = auth_headers("doc_1", "doctor")
     resp = await client.get("/audit-logs", headers=headers)
     assert resp.status_code == 403
     assert "Action requires one of roles: admin" in resp.json()["detail"]

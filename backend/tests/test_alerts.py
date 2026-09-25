@@ -26,7 +26,7 @@ def test_deterministic_hard_threshold_or_logic():
 
 @pytest.mark.asyncio
 async def test_mute_duration_server_hard_clamp(client: AsyncClient, auth_headers):
-    headers = auth_headers("nurse_1", "nurse")
+    headers = auth_headers("doc_1", "doctor")
 
     # Client attempts to request 600 seconds (10 minutes) mute
     resp = await client.post("/mute", headers=headers, json={"bed_id": "01", "duration_seconds": 600})

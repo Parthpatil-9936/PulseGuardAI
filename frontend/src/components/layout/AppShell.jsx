@@ -56,14 +56,14 @@ export const AppShell = ({
       id: 'dashboard',
       label: 'Ward Dashboard',
       icon: LayoutDashboard,
-      roles: ['admin', 'doctor', 'nurse'],
+      roles: ['admin', 'doctor'],
       badge: '10 Beds',
     },
     {
       id: 'patients',
       label: 'Patient Roster',
       icon: Users,
-      roles: ['admin', 'doctor', 'nurse'],
+      roles: ['admin', 'doctor'],
     },
     {
       id: 'transfers',
@@ -77,7 +77,7 @@ export const AppShell = ({
       id: 'notes',
       label: 'Clinical Notes',
       icon: FileText,
-      roles: ['doctor', 'nurse'],
+      roles: ['doctor', 'admin'],
     },
     {
       id: 'users',
@@ -255,10 +255,10 @@ export const AppShell = ({
             {/* Authenticated Panel Clearance Badge */}
             <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-100/90 border border-slate-200/80 text-xs shadow-xs">
               <span className={`w-2 h-2 rounded-full ${
-                role === 'admin' ? 'bg-purple-600 animate-pulse' : role === 'doctor' ? 'bg-teal-600 animate-pulse' : 'bg-blue-600 animate-pulse'
+                role === 'admin' ? 'bg-purple-600 animate-pulse' : 'bg-teal-600 animate-pulse'
               }`} />
               <span className="font-bold text-slate-800 capitalize">
-                {role === 'admin' ? 'Admin Panel' : role === 'doctor' ? 'Doctor Panel' : 'Nurse Station'}
+                {role === 'admin' ? 'Admin Panel' : 'Doctor Panel'}
               </span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white text-slate-500 border border-slate-200 font-semibold uppercase">
                 Isolated

@@ -25,7 +25,7 @@ class BedOut(BaseModel):
 
 
 class MedicalNoteCreate(BaseModel):
-    note_type: str = "doctor_note"  # 'doctor_note' or 'nurse_observation'
+    note_type: str = "doctor_note"  # 'doctor_note', 'consultation', 'handover'
     content: str
 
 

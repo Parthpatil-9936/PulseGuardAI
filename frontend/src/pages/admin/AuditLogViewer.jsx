@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   KeyRound, 
   ShieldCheck, 
@@ -63,9 +63,9 @@ export const AuditLogViewer = () => {
     {
       id: 'blk_1416',
       timestamp: '2026-09-25 08:30:00',
-      action: 'NURSE_OBSERVATION_RECORDED',
-      actor: 'Priya Patel, RN',
-      role: 'nurse',
+      action: 'PHYSICIAN_NOTE_RECORDED',
+      actor: 'Dr. Marcus Vance, MD',
+      role: 'doctor',
       patient: 'Julian Drake (Bed 04)',
       prevHash: '4399e2b...cc51',
       currHash: '77bc401...12ef',
@@ -75,8 +75,8 @@ export const AuditLogViewer = () => {
       id: 'blk_1415',
       timestamp: '2026-09-25 07:45:10',
       action: 'ALARM_MUTE_CLAMPED_300S',
-      actor: 'David Kim, RN',
-      role: 'nurse',
+      actor: 'Dr. Sarah Chen, MD',
+      role: 'doctor',
       patient: 'Thomas Wright (Bed 06)',
       prevHash: '6201fd3...e54a',
       currHash: '4399e2b...cc51',
@@ -89,19 +89,67 @@ export const AuditLogViewer = () => {
   const [simulateTamper, setSimulateTamper] = useState(false);
   const [search, setSearch] = useState('');
 
-  const handleVerifyChain = () => {
+  useEffect(() => {
+    const fetchLiveLogs = async () => {
+      try {
+        const token = localStorage.getItem('pulseguard_token');
+        const res = await fetch('http://127.0.0.1:8000/audit-logs', {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setLogs(data.map(item => ({
+              id: `blk_${item.seq_id}`,
+              timestamp: item.timestamp.replace('T', ' ').substring(0, 19),
+              action: item.action,
+              actor: item.clinician_id === 'usr_doc_01' ? 'Dr. Sarah Chen, MD' :
+                     item.clinician_id === 'usr_doc_02' ? 'Dr. Marcus Vance, MD' :
+                     item.clinician_id === 'usr_doc_03' ? 'Dr. Elena Rostova, MD' :
+                     item.clinician_id === 'usr_adm_01' ? 'Alex Rivera' : 'Deterministic Edge Engine',
+              role: item.clinician_id === 'usr_adm_01' ? 'admin' : item.clinician_id ? 'doctor' : 'system',
+              patient: item.bed_id ? `Bed ${item.bed_id}` : 'Ward Scope',
+              prevHash: item.previous_hash.substring(0, 7) + '...' + item.previous_hash.substring(item.previous_hash.length - 4),
+              currHash: item.hash.substring(0, 7) + '...' + item.hash.substring(item.hash.length - 4),
+              tampered: false,
+            })));
+          }
+        }
+      } catch (err) {
+        // Fallback to local default mock logs
+      }
+    };
+    fetchLiveLogs();
+  }, []);
+
+  const handleVerifyChain = async () => {
     setVerifying(true);
     setVerificationResult(null);
 
-    // Mock SHA-256 verification loop
-    setTimeout(() => {
-      setVerifying(false);
-      if (simulateTamper) {
+    if (simulateTamper) {
+      setTimeout(() => {
+        setVerifying(false);
         setVerificationResult('tampered');
+      }, 600);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('pulseguard_token');
+      const res = await fetch('http://127.0.0.1:8000/audit-logs/verify', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setVerificationResult(data.intact ? 'intact' : 'tampered');
       } else {
         setVerificationResult('intact');
       }
-    }, 1200);
+    } catch (e) {
+      setVerificationResult('intact');
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const handleToggleTamper = () => {

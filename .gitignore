@@ -1,6 +1,26 @@
+# Dependencies
 node_modules/
+.venv/
+env/
+venv/
+
+# Build artifacts
 dist/
+build/
+*.egg-info/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local Environment & Logs
+.env
 .env.local
 .env.*.local
 *.log
 .DS_Store
+Thumbs.db

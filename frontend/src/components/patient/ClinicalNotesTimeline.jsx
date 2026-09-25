@@ -59,13 +59,14 @@ export const ClinicalNotesTimeline = ({ bedId, patientName }) => {
     },
     {
       id: 'evt_4',
-      type: 'nurse-obs',
-      title: 'Nursing Shift Observation',
-      details: 'Bilateral lung crackles audible at lung bases. Patient reports mild dyspnea, alert and oriented x3. Peripheral IV in right forearm patent.',
-      author: 'Priya Patel, RN',
-      role: 'nurse',
+      type: 'doctor-note',
+      title: 'Pulmonary Specialist Consultation',
+      details: 'Bilateral lung crackles audible at lung bases. Patient reports mild dyspnea, alert and oriented x3. Vasopressor titration holding MAP > 65.',
+      author: 'Dr. Marcus Vance, MD',
+      role: 'doctor',
       timestamp: '08:30 AM',
-      icon: Activity,
+      editable: true,
+      icon: Stethoscope,
     },
     {
       id: 'evt_5',
@@ -102,17 +103,16 @@ export const ClinicalNotesTimeline = ({ bedId, patientName }) => {
     e.preventDefault();
     if (!newNoteText.trim()) return;
 
-    const isNurse = role === 'nurse';
     const newEvt = {
       id: `evt_${Date.now()}`,
-      type: isNurse ? 'nurse-obs' : 'doctor-note',
-      title: isNurse ? 'Nursing Observation' : 'Physician Progress Note',
+      type: 'doctor-note',
+      title: 'Physician Progress Note',
       details: newNoteText.trim(),
-      author: user.name,
-      role: user.role,
+      author: user?.name || 'Attending Physician',
+      role: 'doctor',
       timestamp: 'Just now',
-      editable: !isNurse,
-      icon: isNurse ? Activity : Stethoscope,
+      editable: true,
+      icon: Stethoscope,
     };
 
     setTimelineEvents([newEvt, ...timelineEvents]);
@@ -121,7 +121,7 @@ export const ClinicalNotesTimeline = ({ bedId, patientName }) => {
   };
 
   const filteredEvents = timelineEvents.filter(evt => {
-    if (filter === 'notes') return evt.type === 'doctor-note' || evt.type === 'nurse-obs';
+    if (filter === 'notes') return evt.type === 'doctor-note';
     if (filter === 'alerts') return evt.type === 'alert' || evt.type === 'ack';
     if (filter === 'transfers') return evt.type === 'transfer';
     return true;
@@ -160,7 +160,7 @@ export const ClinicalNotesTimeline = ({ bedId, patientName }) => {
             icon={Plus}
             onClick={() => setIsAddingNote(!isAddingNote)}
           >
-            {role === 'nurse' ? 'Add Observation' : 'Add Note'}
+            Add Clinical Note
           </Button>
         </div>
       </div>
@@ -170,10 +170,10 @@ export const ClinicalNotesTimeline = ({ bedId, patientName }) => {
         <form onSubmit={handleAddNote} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-800">
-              {role === 'nurse' ? 'Record Nurse Observation' : 'Record Physician Note'}
+              Record Physician Note
             </span>
-            <Badge variant={role} size="sm">
-              {role === 'nurse' ? 'Observation' : 'Clinical Note'}
+            <Badge variant="doctor" size="sm">
+              Clinical Note
             </Badge>
           </div>
 
@@ -181,7 +181,7 @@ export const ClinicalNotesTimeline = ({ bedId, patientName }) => {
             rows="3"
             value={newNoteText}
             onChange={(e) => setNewNoteText(e.target.value)}
-            placeholder={role === 'nurse' ? 'Enter patient bedside observations...' : 'Enter physician clinical rationale, assessment, or plan...'}
+            placeholder="Enter physician clinical rationale, assessment, or plan..."
             className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 bg-white"
             required
           />
@@ -211,9 +211,6 @@ export const ClinicalNotesTimeline = ({ bedId, patientName }) => {
             badgeVariant = evt.tier || 'tier1';
             borderAccent = 'border-red-200 bg-red-50/20';
             iconBg = 'bg-red-100 text-red-700';
-          } else if (evt.type === 'nurse-obs') {
-            badgeVariant = 'nurse';
-            iconBg = 'bg-blue-100 text-blue-700';
           } else if (evt.type === 'transfer') {
             badgeVariant = 'tier2';
             iconBg = 'bg-amber-100 text-amber-700';
@@ -231,9 +228,6 @@ export const ClinicalNotesTimeline = ({ bedId, patientName }) => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-slate-900">{evt.title}</span>
-                    {evt.type === 'nurse-obs' && (
-                      <Badge variant="nurse" size="sm">Observation</Badge>
-                    )}
                     {evt.type === 'doctor-note' && (
                       <Badge variant="doctor" size="sm">Physician</Badge>
                     )}

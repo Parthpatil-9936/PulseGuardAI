@@ -90,7 +90,7 @@ export const Login = ({ onLoginSuccess }) => {
             <label className="block text-xs font-semibold text-slate-700 mb-2">
               Select Panel & Clinical Role
             </label>
-            <div className="grid grid-cols-3 gap-1.5 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/60">
+            <div className="grid grid-cols-2 gap-2 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/60">
               <button
                 type="button"
                 onClick={() => handleRoleChange('doctor')}
@@ -102,19 +102,6 @@ export const Login = ({ onLoginSuccess }) => {
               >
                 <Stethoscope className="w-4 h-4" />
                 Doctor Panel
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleRoleChange('nurse')}
-                className={`py-2 px-2 text-xs font-bold rounded-xl transition-all duration-200 flex flex-col items-center gap-1 ${
-                  selectedRole === 'nurse'
-                    ? 'bg-white text-[#2563EB] shadow-sm shadow-slate-200'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Activity className="w-4 h-4" />
-                Nurse Panel
               </button>
 
               <button
@@ -181,7 +168,7 @@ export const Login = ({ onLoginSuccess }) => {
               icon={ArrowRight}
               iconPosition="right"
             >
-              Sign In to {selectedRole === 'admin' ? 'Admin Panel' : selectedRole === 'doctor' ? 'Doctor Panel' : 'Nurse Panel'}
+              Sign In to {selectedRole === 'admin' ? 'Admin Panel' : 'Doctor Panel'}
             </Button>
           </form>
 
@@ -190,26 +177,21 @@ export const Login = ({ onLoginSuccess }) => {
             <p className="text-[10px] font-semibold text-slate-400 text-center uppercase tracking-wider mb-2.5">
               Instant 1-Click Panel Access
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => handleQuickLogin('doctor')}
-                className="p-2 text-center rounded-xl bg-teal-50/80 hover:bg-teal-100/80 border border-teal-200/80 text-[11px] font-semibold text-teal-800 transition-colors"
+                className="p-2.5 text-center rounded-xl bg-teal-50/80 hover:bg-teal-100/80 border border-teal-200/80 text-xs font-semibold text-teal-800 transition-colors flex items-center justify-center gap-1.5"
               >
+                <Stethoscope className="w-3.5 h-3.5" />
                 Doctor Panel
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickLogin('nurse')}
-                className="p-2 text-center rounded-xl bg-blue-50/80 hover:bg-blue-100/80 border border-blue-200/80 text-[11px] font-semibold text-blue-800 transition-colors"
-              >
-                Nurse Panel
-              </button>
-              <button
-                type="button"
                 onClick={() => handleQuickLogin('admin')}
-                className="p-2 text-center rounded-xl bg-purple-50/80 hover:bg-purple-100/80 border border-purple-200/80 text-[11px] font-semibold text-purple-800 transition-colors"
+                className="p-2.5 text-center rounded-xl bg-purple-50/80 hover:bg-purple-100/80 border border-purple-200/80 text-xs font-semibold text-purple-800 transition-colors flex items-center justify-center gap-1.5"
               >
+                <Shield className="w-3.5 h-3.5" />
                 Admin Panel
               </button>
             </div>

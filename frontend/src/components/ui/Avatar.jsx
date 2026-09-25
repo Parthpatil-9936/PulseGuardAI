@@ -30,7 +30,6 @@ export const Avatar = ({
   const roleColors = {
     admin: 'bg-purple-100 text-purple-700 border-purple-200',
     doctor: 'bg-teal-50 text-[#0D8A9A] border-teal-200',
-    nurse: 'bg-blue-50 text-[#2563EB] border-blue-200',
     patient: 'bg-slate-100 text-slate-700 border-slate-200',
   };
 

@@ -21,10 +21,6 @@ async def check_patient_access(user: User, patient_id: str, session: AsyncSessio
     if role == "admin":
         return True
 
-    # Nurse: Ward-wide bedside monitoring access across all ward beds
-    if role == "nurse":
-        return True
-
     # Doctor: Requires active assignment OR valid emergency break-glass grant
     if role == "doctor":
         # 1. Check active, non-revoked primary patient assignment

@@ -49,21 +49,21 @@ export const UserManagement = () => {
     },
     {
       id: 'usr_04',
-      name: 'Priya Patel, RN',
-      email: 'priya.rn@pulseguard.icu',
-      role: 'nurse',
-      department: 'Ward 4 Floor Nursing',
-      assignedBeds: ['All Beds (01-10)'],
+      name: 'Dr. Priya Patel, MD',
+      email: 'dr.patel@pulseguard.icu',
+      role: 'doctor',
+      department: 'Cardiology Fellow',
+      assignedBeds: ['Bed 01', 'Bed 04', 'Bed 07'],
       status: 'active',
       lastActive: '2m ago',
     },
     {
       id: 'usr_05',
-      name: 'David Kim, RN',
-      email: 'david.kim@pulseguard.icu',
-      role: 'nurse',
-      department: 'Ward 4 Floor Nursing',
-      assignedBeds: ['Beds 01-05'],
+      name: 'Dr. David Kim, MD',
+      email: 'dr.kim@pulseguard.icu',
+      role: 'doctor',
+      department: 'Critical Care / Intensivist',
+      assignedBeds: ['Bed 03', 'Bed 05', 'Bed 09'],
       status: 'active',
       lastActive: '30m ago',
     },
@@ -109,7 +109,7 @@ export const UserManagement = () => {
       email: newEmail.trim(),
       role: newRole,
       department: newDept,
-      assignedBeds: newRole === 'nurse' ? ['Ward Float'] : ['Unassigned'],
+      assignedBeds: ['Unassigned'],
       status: 'active',
       lastActive: 'Registered',
     };
@@ -170,7 +170,7 @@ export const UserManagement = () => {
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          {['all', 'doctor', 'nurse', 'admin'].map(r => (
+          {['all', 'doctor', 'admin'].map(r => (
             <button
               key={r}
               type="button"
@@ -295,8 +295,7 @@ export const UserManagement = () => {
             value={newRole}
             onChange={(e) => setNewRole(e.target.value)}
             options={[
-              { value: 'doctor', label: 'Doctor (Attending / Fellow)' },
-              { value: 'nurse', label: 'Nurse (Staff / Critical Care RN)' },
+              { value: 'doctor', label: 'Doctor (Attending / Specialist / Fellow)' },
               { value: 'admin', label: 'Admin (Clinical Systems)' },
             ]}
           />

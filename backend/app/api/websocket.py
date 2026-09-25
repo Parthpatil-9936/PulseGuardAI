@@ -24,22 +24,21 @@ async def websocket_monitor(
 ):
     """
     Authenticated, role-filtered real-time telemetry WebSocket.
-    - Admin: Ward-wide (all 10 beds)
-    - Nurse: Ward-wide bedside stream (all 10 beds)
-    - Doctor: Filtered strictly to assigned patients' telemetry streams.
+    - Admin: Ward-wide oversight (all 10 beds)
+    - Doctor: Filtered to assigned patients' telemetry streams (or ward view if permitted).
     """
     await websocket.accept()
 
     # Authenticate via query param token
     user_id = None
-    role = "nurse"  # Default fallback if unauthenticated demo token
+    role = "doctor"  # Default fallback if unauthenticated demo token
     assigned_bed_ids = set()
 
     if token:
         payload = decode_access_token(token)
         if payload:
             user_id = payload.get("sub")
-            role = payload.get("role", "nurse").lower()
+            role = payload.get("role", "doctor").lower()
 
     # Fetch assigned bed IDs for doctor
     if role == "doctor" and user_id:
@@ -61,8 +60,8 @@ async def websocket_monitor(
             # Fallback to standard doctor demo beds if DB is seeding
             assigned_bed_ids = {"01", "02", "04", "07", "10"}
 
-    # If no beds found or role is admin/nurse, allow all beds
-    allow_all = (role in ["admin", "nurse"]) or (not assigned_bed_ids)
+    # If no beds found or role is admin, allow all beds
+    allow_all = (role == "admin") or (not assigned_bed_ids)
 
     queue = telemetry_service.subscribe()
     logger.info(f"WebSocket client connected: user={user_id}, role={role}, allow_all={allow_all}")

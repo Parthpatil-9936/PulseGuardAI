@@ -1,4 +1,4 @@
-﻿# PulseGuard-AI
+# PulseGuard-AI
 
 ### **Deterministic Edge-Triage & DPDP-Compliant Resilience Gateway for Critical Care IoT**
 *Version 3.0 — Extended Hackathon Edition (NexHack 2.0)*
@@ -64,11 +64,11 @@
 
 Version 3.0 extends the deterministic v2.0 edge triage engine into a full **Hospital Workflow & Governance Layer**:
 
-- 🏥 **Role-Specific Ward Dashboards:** Tailored interfaces with backend-enforced RBAC for **Admin**, **Doctor**, and **Nurse** users.
+- 🏥 **Role-Specific Ward Dashboards:** Tailored interfaces with backend-enforced RBAC for **Doctor** and **Admin** users.
 - 🔀 **Doctor-to-Doctor Patient Transfer Workflow:** Secure state-machine (`PENDING ➔ APPROVED / REJECTED / CANCELLED`) with database transactions preventing split-brain primary assignments.
 - ⏳ **Break-Glass Emergency Temporary Access:** Admin-provisioned, time-bounded emergency patient access with mandatory clinical rationale, automated session expiration, and audit logging.
 - 🧠 **Explainable Alert Context (XAI):** Real-time anomaly scores ($0.0 - 1.0$) with dynamic factor attribution (e.g., rapid $SpO_2$ decline coupled with HR acceleration) clearly distinguished from deterministic threshold violations.
-- 📝 **Shift Handover Summaries & Clinical Notes:** Automated rolling-window patient handover summaries aggregating alerts, vitals, and physician/nurse observation logs.
+- 📝 **Shift Handover Summaries & Clinical Notes:** Automated rolling-window patient handover summaries aggregating alerts, vitals, and physician progress and consultation logs.
 - 🔕 **Server-Enforced Mute Clamping:** Anti-tamper alarm silencing capped at a maximum of **300 seconds (5 minutes)** with automatic siren unmute.
 - 🔗 **DPDP-Compliant SHA-256 Audit Ledger:** Cryptographically linked, tamper-evident audit chain verifying all sensitive actions.
 
@@ -85,7 +85,7 @@ Version 3.0 extends the deterministic v2.0 edge triage engine into a full **Hosp
           (Volatile 10s FIFO) │                           │ (WebSocket Stream)
                             ▼                           ▼
                      [ Redis 7.x ]             [ React + Vite UI (:3000) ]
-                            │                   (Doctor / Nurse / Admin Panels)
+                            │                   (Doctor / Admin Panels)
                             ▼                           ▲
                  [ Feature Extraction ]                 │
                             │                           │
@@ -122,17 +122,17 @@ PulseGuard-AI routes all incoming telemetry through a tiered triage cascade to e
 
 Authorization is strictly enforced **server-side** at the FastAPI endpoint layer—hidden UI buttons never substitute for backend security:
 
-| Capability | Admin | Doctor | Nurse |
-| :--- | :---: | :---: | :---: |
-| **View Ward Overview** | ✅ Full Ward | Assigned Only | Assigned Beds |
-| **Live Vital Waveforms & Charts** | ✅ Admin View | ✅ Assigned Patients | ✅ Assigned Patients |
-| **Acknowledge Alarms** | ❌ (Administrative) | ✅ Tier 1 & Tier 2 | ✅ Tier 1 & Tier 2 |
-| **Submit Clinical Notes** | ❌ | ✅ Doctor Notes | 📝 Observations Only |
-| **Initiate Patient Transfer** | ❌ | ✅ | ❌ |
-| **Approve / Reject Transfers** | ✅ | ❌ | ❌ |
-| **Grant Emergency Access** | ✅ | ❌ | ❌ |
-| **View Audit Trail & Tamper Status** | ✅ Full Cryptographic Log | ❌ | ❌ |
-| **Ward Analytics & Noise Metrics** | ✅ Full Analytics | 📊 Clinical Only | 📊 Ward Only |
+| Capability | Admin | Doctor |
+| :--- | :---: | :---: |
+| **View Ward Overview** | ✅ Full Ward | Assigned (or Ward Oversight) |
+| **Live Vital Waveforms & Charts** | ✅ Admin View | ✅ Assigned Patients |
+| **Acknowledge Alarms** | ❌ (Administrative) | ✅ Tier 1 & Tier 2 |
+| **Submit Clinical Notes** | ❌ | ✅ Doctor Notes & Consults |
+| **Initiate Patient Transfer** | ❌ | ✅ |
+| **Approve / Reject Transfers** | ✅ | ❌ |
+| **Grant Emergency Access** | ✅ | ❌ |
+| **View Audit Trail & Tamper Status** | ✅ Full Cryptographic Log | ❌ |
+| **Ward Analytics & Noise Metrics** | ✅ Full Analytics | 📊 Clinical Metrics |
 
 ---
 
@@ -174,7 +174,7 @@ The RESTful API is structured for high throughput and modularity:
 | `GET` | `/me` | Retrieve active authenticated session and permissions | Clinician / Admin |
 | `GET` | `/patients` | List accessible patients based on role and assignment | Role + Assignment |
 | `GET` | `/patients/{id}` | Retrieve patient summary, vitals history, and alerts | Role + Assignment |
-| `POST` | `/patients/{id}/notes` | Post clinical notes or nurse observations | Role Permitted |
+| `POST` | `/patients/{id}/notes` | Post clinical progress notes or consults | Role Permitted |
 | `POST` | `/transfers` | Submit a doctor-to-doctor transfer request | Doctor |
 | `GET` | `/transfers?status=pending` | List pending transfer requests awaiting admin approval | Admin |
 | `POST` | `/transfers/{id}/approve` | Approve transfer request (atomic database transaction) | Admin |

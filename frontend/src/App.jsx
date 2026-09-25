@@ -84,7 +84,7 @@ function MainApp() {
 
   const getRequiredRole = (tab) => {
     if (tab === 'transfers') return 'Doctor or Administrator';
-    if (tab === 'notes') return 'Doctor or Nurse (Clinical Care)';
+    if (tab === 'notes') return 'Doctor or Administrator (Clinical Care)';
     if (['users', 'audit', 'emergency', 'analytics'].includes(tab)) return 'Administrator';
     return 'Authorized Staff';
   };

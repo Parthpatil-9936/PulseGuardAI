@@ -32,7 +32,7 @@ async def list_alerts(
 async def acknowledge_alert(
     id: str,
     req: AlertAcknowledgeRequest,
-    current_user: User = Depends(require_role(["doctor", "nurse", "admin"])),
+    current_user: User = Depends(require_role(["doctor", "admin"])),
     db: AsyncSession = Depends(get_db)
 ):
     stmt = select(Alert).where(Alert.id == id)
@@ -70,7 +70,7 @@ async def acknowledge_alert(
 @router.post("/mute")
 async def request_alarm_mute(
     req: MuteRequest,
-    current_user: User = Depends(require_role(["doctor", "nurse", "admin"])),
+    current_user: User = Depends(require_role(["doctor", "admin"])),
     db: AsyncSession = Depends(get_db)
 ):
     """

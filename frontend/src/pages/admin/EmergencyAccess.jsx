@@ -16,23 +16,23 @@ export const EmergencyAccess = () => {
   const [grants, setGrants] = useState([
     {
       id: 'bg_901',
-      clinician: 'Dr. Marcus Vance, MD',
-      patient: 'Eleanor Vance (Bed 01)',
-      reason: 'Urgent bedside bronchoscopy while primary attending scrubbed in OR.',
-      grantedAt: '10:00 AM',
-      initialMinutes: 30,
-      remainingSeconds: 1140, // 19 minutes left
+      clinician: 'Dr. Sarah Chen, MD',
+      patient: 'Harold Gomez (Bed 03)',
+      reason: 'Emergency cross-coverage code call: Acute SVT while primary attending scrubbed in OR.',
+      grantedAt: '25m ago',
+      initialMinutes: 60,
+      remainingSeconds: 2100, // 35 minutes left
       status: 'active',
     },
     {
-      id: 'bg_900',
-      clinician: 'David Kim, RN',
-      patient: 'Julian Drake (Bed 04)',
-      reason: 'Critical Tier 1 resuscitation code team supplemental support.',
-      grantedAt: '09:45 AM',
-      initialMinutes: 15,
-      remainingSeconds: 180, // 3 minutes left
-      status: 'active',
+      id: 'bg_902',
+      clinician: 'Dr. Marcus Vance, MD',
+      patient: 'Marcus Sterling (Bed 02)',
+      reason: 'STAT bedside thoracentesis consultation during acute pulmonary edema crisis.',
+      grantedAt: '6h ago',
+      initialMinutes: 120,
+      remainingSeconds: 0,
+      status: 'expired',
     },
   ]);
 
@@ -61,7 +61,57 @@ export const EmergencyAccess = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const handleGrant = (e) => {
+  const loadGrantsFromBackend = async () => {
+    try {
+      const token = localStorage.getItem('pulseguard_token');
+      const res = await fetch('http://127.0.0.1:8000/emergency-access', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const docMap = {
+            usr_doc_01: 'Dr. Sarah Chen, MD',
+            usr_doc_02: 'Dr. Marcus Vance, MD',
+            usr_doc_03: 'Dr. Elena Rostova, MD',
+          };
+          const patMap = {
+            pat_01: 'Eleanor Vance (Bed 01)',
+            pat_02: 'Marcus Sterling (Bed 02)',
+            pat_03: 'Harold Gomez (Bed 03)',
+            pat_04: 'Julian Drake (Bed 04)',
+            pat_05: 'Rosa Martinez (Bed 05)',
+            pat_06: 'Thomas Wright (Bed 06)',
+            pat_07: 'Aaliyah Khan (Bed 07)',
+            pat_08: 'Robert Lang (Bed 08)',
+            pat_09: 'Clara Oswald (Bed 09)',
+            pat_10: 'David Zhang (Bed 10)',
+          };
+          setGrants(data.map(g => {
+            const expTime = new Date(g.expires_at).getTime();
+            const nowTime = Date.now();
+            const remaining = Math.max(0, Math.floor((expTime - nowTime) / 1000));
+            return {
+              id: g.id,
+              clinician: docMap[g.clinician_id] || g.clinician_id,
+              patient: patMap[g.patient_id] || g.patient_id,
+              reason: g.reason,
+              grantedAt: new Date(g.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              initialMinutes: 30,
+              remainingSeconds: remaining,
+              status: g.status,
+            };
+          }));
+        }
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    loadGrantsFromBackend();
+  }, []);
+
+  const handleGrant = async (e) => {
     e.preventDefault();
     if (!reason.trim()) return;
 
@@ -80,15 +130,42 @@ export const EmergencyAccess = () => {
     setGrants([newGrant, ...grants]);
     setIsModalOpen(false);
     setReason('');
+
+    try {
+      const token = localStorage.getItem('pulseguard_token');
+      await fetch('http://127.0.0.1:8000/emergency-access', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          patient_id: 'pat_02',
+          clinician_id: 'usr_doc_03',
+          reason: reason.trim(),
+          duration_minutes: mins
+        })
+      });
+      loadGrantsFromBackend();
+    } catch (err) {}
   };
 
-  const handleRevoke = (id) => {
+  const handleRevoke = async (id) => {
     setGrants(prev => prev.map(g => {
       if (g.id === id) {
         return { ...g, status: 'revoked', remainingSeconds: 0 };
       }
       return g;
     }));
+
+    try {
+      const token = localStorage.getItem('pulseguard_token');
+      await fetch(`http://127.0.0.1:8000/emergency-access/${id}`, {
+        method: 'DELETE',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      loadGrantsFromBackend();
+    } catch (err) {}
   };
 
   const formatTimer = (seconds) => {
