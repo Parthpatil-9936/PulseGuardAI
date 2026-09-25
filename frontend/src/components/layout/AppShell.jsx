@@ -387,74 +387,76 @@ export const AppShell = ({
           </div>
         </header>
 
-        {/* 3. System Health Strip (slim bar directly beneath top bar) */}
-        <div className="px-6 py-1.5 bg-slate-900 text-slate-300 text-[11px] font-mono flex items-center justify-between z-10 shrink-0 border-b border-slate-800">
-          {/* Status Dots */}
-          <div className="flex items-center gap-4 flex-wrap">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mr-1">
-              Engine Health:
-            </span>
+        {/* 3. System Health Strip (Admin Panel Only) */}
+        {role === 'admin' && (
+          <div className="px-6 py-1.5 bg-slate-900 text-slate-300 text-[11px] font-mono flex items-center justify-between z-10 shrink-0 border-b border-slate-800">
+            {/* Status Dots */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mr-1">
+                Engine Health:
+              </span>
 
-            {/* FastAPI */}
-            <Tooltip content="FastAPI Edge Gateway running on port 8000" position="bottom">
-              <div className="flex items-center gap-1.5 cursor-help">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-                <span className="text-slate-200">FastAPI</span>
-                <span className="text-slate-400 text-[10px]">:8000</span>
-              </div>
-            </Tooltip>
+              {/* FastAPI */}
+              <Tooltip content="FastAPI Edge Gateway running on port 8000" position="bottom">
+                <div className="flex items-center gap-1.5 cursor-help">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+                  <span className="text-slate-200">FastAPI</span>
+                  <span className="text-slate-400 text-[10px]">:8000</span>
+                </div>
+              </Tooltip>
 
-            {/* Redis */}
-            <Tooltip content="Redis volatile 10s FIFO telemetry buffer" position="bottom">
-              <div className="flex items-center gap-1.5 cursor-help">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-                <span className="text-slate-200">Redis</span>
-                <span className="text-slate-400 text-[10px]">Buffer</span>
-              </div>
-            </Tooltip>
+              {/* Redis */}
+              <Tooltip content="Redis volatile 10s FIFO telemetry buffer" position="bottom">
+                <div className="flex items-center gap-1.5 cursor-help">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+                  <span className="text-slate-200">Redis</span>
+                  <span className="text-slate-400 text-[10px]">Buffer</span>
+                </div>
+              </Tooltip>
 
-            {/* PostgreSQL */}
-            <Tooltip content="PostgreSQL continuous SHA-256 cryptographic audit chain" position="bottom">
-              <div className="flex items-center gap-1.5 cursor-help">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-                <span className="text-slate-200">PostgreSQL</span>
-                <span className="text-slate-400 text-[10px]">Ledger</span>
-              </div>
-            </Tooltip>
+              {/* PostgreSQL */}
+              <Tooltip content="PostgreSQL continuous SHA-256 cryptographic audit chain" position="bottom">
+                <div className="flex items-center gap-1.5 cursor-help">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+                  <span className="text-slate-200">PostgreSQL</span>
+                  <span className="text-slate-400 text-[10px]">Ledger</span>
+                </div>
+              </Tooltip>
 
-            {/* WebSocket */}
-            <Tooltip content="Live bidirectional WebSocket streaming telemetry at 1 Hz" position="bottom">
-              <div className="flex items-center gap-1.5 cursor-help">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-                <span className="text-slate-200">WebSocket</span>
-                <span className="text-slate-400 text-[10px]">1Hz</span>
-              </div>
-            </Tooltip>
+              {/* WebSocket */}
+              <Tooltip content="Live bidirectional WebSocket streaming telemetry at 1 Hz" position="bottom">
+                <div className="flex items-center gap-1.5 cursor-help">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+                  <span className="text-slate-200">WebSocket</span>
+                  <span className="text-slate-400 text-[10px]">1Hz</span>
+                </div>
+              </Tooltip>
 
-            {/* ML Engine */}
-            <Tooltip content="1D-CNN Autoencoder + Isolation Forest local inference" position="bottom">
-              <div className="flex items-center gap-1.5 cursor-help">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-                <span className="text-slate-200">ML Engine</span>
-                <span className="text-teal-400 font-bold text-[10px]">{latencyMs}ms</span>
-              </div>
-            </Tooltip>
+              {/* ML Engine */}
+              <Tooltip content="1D-CNN Autoencoder + Isolation Forest local inference" position="bottom">
+                <div className="flex items-center gap-1.5 cursor-help">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+                  <span className="text-slate-200">ML Engine</span>
+                  <span className="text-teal-400 font-bold text-[10px]">{latencyMs}ms</span>
+                </div>
+              </Tooltip>
+            </div>
+
+            {/* Right: Offline / WAN Status Slot */}
+            <div className="flex items-center gap-3">
+              {isCloudOutage ? (
+                <Badge variant="offline" size="sm" pulseDot>
+                  OFFLINE — EDGE STANDALONE ACTIVE
+                </Badge>
+              ) : (
+                <div className="flex items-center gap-1.5 text-slate-400 text-[10px]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Cloud Sync Live</span>
+                </div>
+              )}
+            </div>
           </div>
-
-          {/* Right: Offline / WAN Status Slot */}
-          <div className="flex items-center gap-3">
-            {isCloudOutage ? (
-              <Badge variant="offline" size="sm" pulseDot>
-                OFFLINE — EDGE STANDALONE ACTIVE
-              </Badge>
-            ) : (
-              <div className="flex items-center gap-1.5 text-slate-400 text-[10px]">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span>Cloud Sync Live</span>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* 4. Persistent Cloud Outage Banner when Active */}
         {isCloudOutage && (
