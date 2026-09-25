@@ -1,0 +1,292 @@
+# PulseGuard-AI — Project Context & Engineering Specification
+
+Single source of truth for implementing, building, testing, and debugging the
+PulseGuard-AI edge gateway and triage system. Target audience: autonomous
+coding agents and LLM assistants.
+
+## 1. System Overview & Core Invariants
+
+### 1.1 What PulseGuard-AI Is
+On-premise, edge-native clinical telemetry middleware for ICU wards (10
+simulated beds per gateway node). Intercepts continuous multi-parameter
+physiological streams (ECG, Heart Rate, SpO2, Blood Pressure), cleans sensor
+motion artifacts and baseline drift, scores multi-vital anomalies in sub-5ms
+latency, suppresses non-actionable transient alarms (>75% reduction), and
+guarantees unsuppressable catastrophic alarm paths regardless of WAN
+connectivity or cloud outages.
+
+### 1.2 Absolute Non-Negotiable Invariants (Do Not Violate in Code)
+
+1. **The Life-Safety Critical Path Is 100% Local** — Telemetry ingestion,
+   validation, signal conditioning, anomaly scoring, 3-tier cascade routing,
+   and WebSocket alert pushes MUST execute entirely on the local host
+   machine. No external API calls (OpenAI, AWS IoT, external auth) may exist
+   on the critical alarm path.
+2. **The "OR'd" Safety Net — ML Can Never Suppress Hard Thresholds** —
+   Hardwired physiological safety limits (SpO2 < 85%, asystole, extreme rate
+   boundaries) run strictly in parallel with the ML model. The alert tier is
+   computed via a logical OR, never an AND. An anomaly score of 0.0 can NEVER
+   prevent an alarm if a hard physiological limit is breached.
+3. **Deterministic Server-Side Mute Clamping** — Any clinical alarm mute
+   command MUST be clamped on the server to a maximum duration of 300 seconds
+   (5 minutes). The browser/client is untrusted; client requests specifying
+   >300 seconds must be rewritten to 300 seconds server-side.
+4. **Silence Is Never Normal** — If a bedside telemetry stream drops packets
+   or fails to emit ticks for >2.0 seconds, the bed state MUST transition
+   immediately to a gray "No Signal" warning state. Dropped packets must
+   never be rendered as green or healthy.
+5. **Non-Blocking Audit Persistence** — Database operations (PostgreSQL audit
+   logging) must be asynchronous and non-blocking. A database slowdown or
+   crash must NEVER delay the sub-5ms WebSocket alert dispatch.
+
+## 2. Technology Stack & Topology
+
+Single docker-compose.yml network:
+- **gateway** — Python 3.11 / FastAPI / AsyncIO. Core daemon; exposes MQTT
+  subscriber & HTTP POST /ingest/telemetry, WebSocket /ws/alerts, and REST
+  /alerts/{id}/action endpoints. Executes ML scoring and triage routing
+  in-process.
+- **cache** — Redis 7.x (Alpine). In-memory volatile FIFO queue. Holds a
+  10-second rolling window per bed (~50-100 samples at 10Hz).
+- **db** — PostgreSQL 16 (Alpine). Append-only, tamper-evident audit database
+  with HMAC-SHA256 chained transaction logs. Non-blocking writes via
+  SQLAlchemy async engine.
+- **dashboard** — React 18 / Vite / TailwindCSS / Chart.js. 10-bed card grid,
+  live waveforms, suppression metrics, plain-language clinical reasons,
+  resilience controls.
+- **telemetry-gen** — Python 3.11 script. Simulates 10 ICU beds with
+  injectable anomaly/drift/tamper patterns.
+
+## 3. Data Contracts & Network Protocols
+
+### 3.1 Ingestion Contract (Monitor → Gateway)
+Transport: MQTT topic `pulseguard/telemetry/{bed_id}` or HTTP POST
+`/ingest/telemetry`. Frequency: 10Hz per bed (100ms intervals).
+
+```json
+{
+  "bed_id": "bed-01",
+  "ts": "2026-09-18T01:46:16.123Z",
+  "hr": 78,
+  "spo2": 98,
+  "bp_sys": 120,
+  "bp_dia": 80,
+  "ecg_lead_ok": true,
+  "seq": 10452
+}
+```
+
+Field constraints:
+- bed_id: string, regex `^bed-(0[1-9]|10)$`
+- ts: ISO-8601 UTC timestamp, millisecond precision
+- hr: integer, valid range [0, 300] bpm
+- spo2: integer, valid range [0, 100] %
+- bp_sys: integer, systolic [0, 300] mmHg
+- bp_dia: integer, diastolic [0, 200] mmHg
+- ecg_lead_ok: boolean, hardware electrode impedance status
+- seq: integer, strictly monotonic counter incremented by monitor hardware
+
+### 3.2 Alert Push Contract (Gateway → Dashboard)
+Transport: WebSocket push frame WSS `/ws/alerts`. Trigger: dispatched on
+every scored tick that updates a bed's status, or at a fixed broadcast
+heartbeat.
+
+```json
+{
+  "bed_id": "bed-01",
+  "tier": 2,
+  "confidence": 0.84,
+  "reason": "WARNING: HR + SpO2 Divergent Trajectory",
+  "drift_flag": "none",
+  "schema_version": "1.0",
+  "ts": "2026-09-18T01:46:16.130Z"
+}
+```
+
+tier — integer enum [1,2,3]:
+1. Catastrophic — red, audible siren, unsuppressable.
+2. Multi-vital warning — yellow card, requires clinician acknowledgment.
+3. Transient spike / suppressed noise — silent, audit-logged only,
+   increments noise counter.
+
+- confidence: float [0.0, 1.0], normalized anomaly score
+- reason: human-readable clinical string (NEVER expose raw numerical vectors
+  or model probabilities)
+- drift_flag: enum ["none", "drift", "tamper"] generated by the
+  signal-quality pre-filter
+
+### 3.3 Clinician Action Contract (Dashboard → Gateway)
+
+Acknowledge Alert — POST /alerts/{alert_id}/acknowledge
+```json
+{"clinician_id": "RN-4029", "ts": "2026-09-18T01:46:18.000Z"}
+```
+
+Manual Escalation / Override — POST /alerts/{alert_id}/override
+```json
+{"clinician_id": "RN-4029", "ts": "2026-09-18T01:46:20.000Z",
+ "new_tier": 1, "justification": "Patient visible distress"}
+```
+
+Temporary Mute — POST /alerts/{alert_id}/mute
+```json
+{"clinician_id": "RN-4029", "ts": "2026-09-18T01:46:22.000Z", "duration_s": 300}
+```
+Rule: server clamps `duration_s = min(duration_s, 300)`. Max 5 minutes.
+
+## 4. Machine Learning & Signal Processing Architecture
+
+NOTE: This project uses ONLY a 1D-CNN Autoencoder as the ML model.
+Isolation Forest, mentioned in earlier spec drafts, has been dropped.
+
+### 4.1 Ingestion & Pre-Filtering
+1. **Pydantic Bounds Clamping** — incoming telemetry validated against
+   physiological min/max bounds. Values exceeding biological survivability
+   are dropped or flagged as sensor disconnect.
+2. **Signal Quality Index (SQI) & Drift Filter** — rolling cosine-similarity
+   metric between the current waveform window and a moving baseline.
+   - Drift: low-frequency wander (0.05-0.5 Hz) flags as sensor drift (e.g.
+     electrode drying or sweat) rather than myocardial ischemia.
+   - Tamper/Disconnect: discontinuous open-circuit spikes or
+     `ecg_lead_ok == false` flag as tamper or a loose lead.
+
+### 4.2 Multi-Vital Sliding Window (Redis Core)
+Key format: `telemetry:{bed_id}` as a Redis List. Operation: LPUSH incoming
+JSON tick; LTRIM 0 99 (keeps exactly 100 samples = 10 seconds at 10Hz).
+
+### 4.3 Anomaly Detection Model — 1D-CNN Autoencoder
+- Reconstructs the incoming 10-second multi-vital array (HR, SpO2, BP_sys as
+  channels).
+- Trained exclusively on healthy, stable synthetic baseline telemetry.
+- Deviations from homeostatic patterns cause high reconstruction error (MSE)
+  across diverging vital channels.
+- Yields a continuous Anomaly Score normalized 0.0-1.0 in under 5ms.
+- Score normalization pattern: `normalized_score = clip((raw_error - offset)
+  / scale, 0.0, 1.0)`, where offset/scale are calibrated per-model from
+  percentiles of the healthy reconstruction-error distribution (NOT hardcoded
+  constants — recalibrate for your own trained model).
+
+### 4.4 The 3-Tier Decision Matrix
+Hard thresholds run strictly in parallel and always override ML outputs.
+- Hard breach (SpO2<85%, HR<20 or >220, lead-off) OR score>0.9 → **TIER 1**
+  (Catastrophic, unsuppressable)
+- Else if score between 0.5 and 0.9 → **TIER 2** (Warning, clinician ack)
+- Else → **TIER 3** (Suppressed, logged only)
+
+## 5. Security & DPDP Compliance Engine
+
+Aligns with India's Digital Personal Data Protection (DPDP) Act.
+
+### 5.1 Data Minimization & Segregation (Section 6, DPDP)
+- Bedside telemetry payloads MUST NOT contain patient names, national
+  identity numbers, or medical history.
+- Bed-to-patient identity mapping is maintained out-of-band and never passes
+  through the real-time scoring engine.
+
+### 5.2 Ephemeral Volatile Storage (Section 8, DPDP)
+- High-frequency raw waveform data (10-50 Hz) is volatile: resides in Redis
+  with a 10-second TTL, continuously overwritten.
+- Raw waveforms are NEVER written to disk and NEVER transmitted outside the
+  hospital LAN. Only downsampled (1-minute windowed averages) and confirmed
+  alert logs sync upstream.
+
+### 5.3 Cryptographically Chained Audit Ledger (HMAC-SHA256)
+Every clinician action (acknowledge, override, mute) and Tier-1 alert must
+append a record into PostgreSQL with SHA-256 hash chaining:
+
+```
+Hash_n = SHA-256( Hash_(n-1) || Timestamp || Bed ID || Clinician ID || Action || New Tier )
+```
+
+```sql
+CREATE TABLE audit_ledger (
+  id SERIAL PRIMARY KEY,
+  seq_id BIGINT UNIQUE NOT NULL,
+  ts TIMESTAMPTZ NOT NULL,
+  bed_id VARCHAR(10) NOT NULL,
+  clinician_id VARCHAR(50) NOT NULL,
+  action VARCHAR(20) NOT NULL,
+  new_tier INT,
+  prev_hash VARCHAR(64) NOT NULL,
+  current_hash VARCHAR(64) NOT NULL
+);
+```
+
+If an internal actor updates or deletes any audit row, subsequent hash
+checks fail, surfacing a tamper warning on the UI.
+
+## 6. Resilience & Graceful Degradation Handling
+
+| Failure | Detection | Fallback Behavior |
+|---|---|---|
+| Cloud WAN Blackout | 5s HTTP heartbeat ping times out | Triage continues 100% locally. Cloud sync buffers locally. Dashboard badge flips to "Offline." |
+| Redis Process Crash | ConnectionError caught in FastAPI Redis client pool | Gateway switches to in-process `collections.deque` ring buffer. Hard thresholds evaluate per-tick without dropping. |
+| PostgreSQL Crash | Async write timeout/exception on SQLAlchemy session | Alarm path non-blocking. Events buffer in memory (up to 5 min); flush on DB restart with explicit "Gap Marker." |
+| Bed Sensor Disconnect | Monotonic seq gap or tick timeout >2.0s | Tile flips green→gray "No Signal." Silence NEVER rendered as normal. |
+| Extended Alarm Mute | REST payload requests mute >300s | Server clamps to 300s. At 05:01, server auto-un-mutes and re-checks vitals; siren rings if still bad. |
+
+## 7. Build, Verification & Demo Acceptance Criteria
+
+Automated smoke test (`tests/verify_acceptance.py`):
+1. Container Health — `docker-compose ps`. All containers healthy.
+2. Tier-1 Catastrophic Test — inject SpO2=82%. Verify Tier-1 Red Alert via
+   WebSocket in <1.0 second.
+3. Tier-3 Noise Suppression Test — inject single-vital HR transient spike
+   (135bpm, 1s, stable SpO2/BP). Verify NO siren/red alert; suppression
+   counter increments by 1.
+4. Resilience Verification (Cloud Kill) — trigger "Simulate Cloud Outage."
+   Inject Tier-1 hypoxia. Verify alert latency <5ms, local dispatch
+   unaffected.
+5. Chaos Verification (Redis Kill) — `docker kill pulseguard_redis`. Inject
+   hard-threshold breach (SpO2<85%). Verify ring buffer catches it, alarm
+   sounds, no gateway crash.
+6. Mute Clamp Test — POST /alerts/1/mute {"duration_s": 9999}. Assert
+   `remaining_mute_s <= 300`.
+
+## 8. Directory & File Layout for Coding Agents
+
+```
+pulseguard-ai/
+|-- docker-compose.yml
+|-- README.md
+|-- docs/
+|   |-- context-spec.md          # this file
+|   `-- implementation-spec.md
+|-- backend/
+|   |-- Dockerfile
+|   |-- requirements.txt         # fastapi, uvicorn, redis, sqlalchemy,
+|   |                            #   asyncpg, torch (CPU), pydantic
+|   `-- app/
+|       |-- main.py              # FastAPI init, routing & lifecycle
+|       |-- config.py            # env vars (clamped durations, secrets)
+|       |-- schemas/
+|       |   |-- telemetry.py     # TelemetryTick, AlertEvent, ActionRequest
+|       |   `-- audit.py         # AuditEntry, HashChainSchema
+|       |-- services/
+|       |   |-- ingest.py        # ingestion pipeline & bounds checks
+|       |   |-- ring_buffer.py   # per-bed sliding window + Redis fallback
+|       |   |-- triage.py        # OR'd safety net & 3-tier classifier
+|       |   `-- audit_chain.py   # HMAC-SHA256 ledger writer
+|       |-- ml/
+|       |   |-- autoencoder_v1.pt  # trained PyTorch autoencoder weights
+|       |   `-- autoencoder.py     # model class + training script
+|       `-- db/
+|           |-- database.py      # SQLAlchemy async engine & session pool
+|           `-- models.py        # AuditLedger table model
+|-- simulator/
+|   |-- generator.py             # 10-bed vital covariance generator
+|   `-- chaos_injector.py        # CLI to inject Tier 1/3, drift, lead dropouts
+`-- frontend/
+    |-- Dockerfile
+    |-- package.json             # React 18, Vite, Lucide-React, Chart.js, Tailwind
+    `-- src/
+        |-- App.jsx               # dashboard shell, WS listener & ward state
+        |-- components/
+        |   |-- BedGrid.jsx
+        |   |-- BedCard.jsx
+        |   |-- WaveformPanel.jsx
+        |   |-- AuditFeed.jsx
+        |   `-- Controls.jsx
+        `-- hooks/
+            `-- useWebSocket.js
+```
