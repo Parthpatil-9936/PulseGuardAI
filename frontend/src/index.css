@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #475569; /* slate-600 body */
+    background-color: #F8FAFC; /* Base background */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: #0F172A; /* slate-900 headings */
+    font-weight: 600;
+  }
+}
+
+@layer components {
+  /* Depth system: Glass panel */
+  .glass-panel {
+    @apply backdrop-blur-lg bg-white/60 border border-white/40 shadow-[0_8px_30px_rgba(0,0,0,0.08)];
+  }
+
+  /* Depth system: Solid elevated card with dual-layer ambient + contact shadow */
+  .card-elevated {
+    @apply bg-white rounded-2xl border border-slate-100 shadow-[0_1px_3px_0_rgba(0,0,0,0.04),0_10px_25px_-5px_rgba(0,0,0,0.05),0_8px_10px_-6px_rgba(0,0,0,0.03)];
+  }
+
+  /* Interaction: Lift on hover utility */
+  .hover-lift {
+    @apply transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-lg;
+  }
+
+  /* Clinical typography rule: Vital values MUST be medium or semibold, never thin weights */
+  .clinical-vital {
+    @apply font-semibold text-slate-900 tracking-tight;
+  }
+
+  .clinical-unit {
+    @apply font-medium text-slate-500 text-xs tracking-normal;
+  }
+}
+
+/* Custom scrollbars for clean clinical dashboards */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
