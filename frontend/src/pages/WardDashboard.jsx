@@ -7,8 +7,6 @@ import {
   CheckCircle2, 
   Search, 
   SlidersHorizontal,
-  RefreshCw,
-  Zap,
   Filter
 } from 'lucide-react';
 import { BedTile } from '../components/ward/BedTile';
@@ -48,8 +46,8 @@ export const WardDashboard = ({
       return bed.tier === 'tier1' || bed.tier === 'tier2';
     }
     if (filterMode === 'assigned') {
-      if (role === 'doctor') {
-        return bed.assignedDoctor.includes('Chen');
+      if (role === 'doctor' && user) {
+        return bed.assignedDoctorId === user.id;
       }
       return true;
     }
@@ -114,13 +112,13 @@ export const WardDashboard = ({
                 }`}
               >
                 <span>My Assigned Beds</span>
-                <span className="bg-teal-700 text-white px-1.5 py-0.2 rounded-md font-mono text-[11px]">5</span>
+                <span className="bg-teal-700 text-white px-1.5 py-0.2 rounded-md font-mono text-[11px]">{beds.filter(b => b.assignedDoctorId === user?.id).length}</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Search & Demo Telemetry Injector Controls */}
+        {/* Search Controls */}
         <div className="flex items-center gap-3">
           <div className="w-48 sm:w-56">
             <Input
@@ -131,28 +129,6 @@ export const WardDashboard = ({
               className="py-1.5 text-xs"
             />
           </div>
-
-          {/* Anomaly Injector Button (Demo Testing) */}
-          <Button
-            variant="outline"
-            size="sm"
-            icon={Zap}
-            onClick={onInjectHypoxia}
-            className="text-red-600 border-red-200 hover:bg-red-50"
-            title="Inject acute desaturation into Bed 04 to test Tier 1 alarm cascade"
-          >
-            Inject Hypoxia
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={RefreshCw}
-            onClick={onResetBeds}
-            title="Reset telemetry baseline"
-          >
-            Reset
-          </Button>
         </div>
       </div>
 

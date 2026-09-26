@@ -18,7 +18,10 @@ from typing import Dict, List, Literal, Optional, Tuple
 import numpy as np
 from pydantic import ValidationError
 
-from backend.app.schemas.telemetry import ProcessedTelemetryTick, TelemetryTick
+try:
+    from app.schemas.telemetry import ProcessedTelemetryTick, TelemetryTick
+except ImportError:
+    from backend.app.schemas.telemetry import ProcessedTelemetryTick, TelemetryTick
 
 logger = logging.getLogger(__name__)
 

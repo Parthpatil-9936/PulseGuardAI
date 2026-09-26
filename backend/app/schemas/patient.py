@@ -13,6 +13,18 @@ class PatientOut(BaseModel):
     created_at: datetime.datetime
 
 
+class PatientCreate(BaseModel):
+    name: str
+    age: int
+    gender: str
+    diagnosis: str
+    code_status: str
+
+
+class PatientAllocate(BaseModel):
+    doctor_id: str
+
+
 class BedOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

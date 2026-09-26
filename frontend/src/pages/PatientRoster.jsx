@@ -1,12 +1,70 @@
-import React, { useState } from 'react';
-import { Users, Search, ChevronRight, HeartPulse, Stethoscope, AlertTriangle, ShieldAlert } from 'lucide-react';
-import { Badge, Button, Input } from '../components/ui';
+import React, { useState, useEffect } from 'react';
+import { Users, Search, ChevronRight, HeartPulse, Stethoscope, AlertTriangle, ShieldAlert, Plus } from 'lucide-react';
+import { Badge, Button, Input, Modal, ModalFooter, Select } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 
+const API_BASE = 'http://127.0.0.1:8000';
+
 export const PatientRoster = ({ beds, onSelectBed }) => {
-  const { user, role } = useAuth();
+  const { user, role, token } = useAuth();
   const [search, setSearch] = useState('');
   const [tierFilter, setTierFilter] = useState('all');
+  const [isAdmitModalOpen, setIsAdmitModalOpen] = useState(false);
+  const [newPatientName, setNewPatientName] = useState('');
+  const [newPatientAge, setNewPatientAge] = useState('');
+  const [newPatientGender, setNewPatientGender] = useState('Male');
+  const [newPatientDiagnosis, setNewPatientDiagnosis] = useState('');
+  const [assignedDoc, setAssignedDoc] = useState('');
+  const [doctors, setDoctors] = useState([]);
+
+  // Fetch real doctors from backend on modal open
+  useEffect(() => {
+    if (!isAdmitModalOpen) return;
+    const t = localStorage.getItem('pulseguard_token');
+    if (!t) return;
+    fetch(`${API_BASE}/auth/users`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(users => {
+        const docs = users.filter(u => u.role === 'doctor' && u.status === 'active');
+        setDoctors(docs);
+        if (docs.length > 0) setAssignedDoc(docs[0].id);
+      })
+      .catch(() => {});
+  }, [isAdmitModalOpen]);
+
+  const handleAdmitPatient = async (e) => {
+    e.preventDefault();
+    try {
+      const t = localStorage.getItem('pulseguard_token');
+      const pRes = await fetch(`${API_BASE}/patients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+        body: JSON.stringify({
+          name: newPatientName,
+          age: parseInt(newPatientAge, 10),
+          gender: newPatientGender,
+          diagnosis: newPatientDiagnosis,
+          code_status: 'Full Code'
+        })
+      });
+      const pData = await pRes.json();
+
+      if (assignedDoc) {
+        await fetch(`${API_BASE}/patients/${pData.id}/allocate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+          body: JSON.stringify({ doctor_id: assignedDoc })
+        });
+      }
+
+      setIsAdmitModalOpen(false);
+      setNewPatientName('');
+      setNewPatientAge('');
+      setNewPatientDiagnosis('');
+    } catch (err) {
+      alert('Failed to create patient: ' + err.message);
+    }
+  };
 
   const filtered = beds.filter(b => {
     if (tierFilter !== 'all' && b.tier !== tierFilter) return false;
@@ -35,14 +93,26 @@ export const PatientRoster = ({ beds, onSelectBed }) => {
           </p>
         </div>
 
-        <div className="w-full sm:w-64">
-          <Input
-            placeholder="Search patient, bed, diagnosis..."
-            icon={Search}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="py-1.5 text-xs"
-          />
+        <div className="flex items-center gap-3">
+          <div className="w-full sm:w-64">
+            <Input
+              placeholder="Search patient, bed, diagnosis..."
+              icon={Search}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="py-1.5 text-xs"
+            />
+          </div>
+          {role === 'admin' && (
+            <Button
+              variant="primary"
+              size="sm"
+              icon={Plus}
+              onClick={() => setIsAdmitModalOpen(true)}
+            >
+              Admit Patient
+            </Button>
+          )}
         </div>
       </div>
 
@@ -146,6 +216,54 @@ export const PatientRoster = ({ beds, onSelectBed }) => {
           </table>
         </div>
       </div>
+
+      <Modal
+        isOpen={isAdmitModalOpen}
+        onClose={() => setIsAdmitModalOpen(false)}
+        title="Dynamic Patient Admission"
+        description="Create a new patient record and allocate to a doctor"
+      >
+        <form onSubmit={handleAdmitPatient} className="space-y-4">
+          <Input
+            label="Patient Name"
+            value={newPatientName}
+            onChange={(e) => setNewPatientName(e.target.value)}
+            required
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Age"
+              type="number"
+              value={newPatientAge}
+              onChange={(e) => setNewPatientAge(e.target.value)}
+              required
+            />
+            <Select
+              label="Gender"
+              value={newPatientGender}
+              onChange={(e) => setNewPatientGender(e.target.value)}
+              options={[{value:'M', label:'Male'}, {value:'F', label:'Female'}]}
+            />
+          </div>
+          <Input
+            label="Diagnosis"
+            value={newPatientDiagnosis}
+            onChange={(e) => setNewPatientDiagnosis(e.target.value)}
+            required
+          />
+          <Select
+            label="Allocate Doctor"
+            value={assignedDoc}
+            onChange={(e) => setAssignedDoc(e.target.value)}
+            options={doctors.map(d => ({ value: d.id, label: d.name }))}
+          />
+          <ModalFooter>
+            <Button variant="ghost" onClick={() => setIsAdmitModalOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="primary">Admit & Allocate</Button>
+          </ModalFooter>
+        </form>
+      </Modal>
+
     </div>
   );
 };

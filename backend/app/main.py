@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
@@ -45,14 +44,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Could not load ML model during lifespan startup: {e}")
 
-    # Start background telemetry generator loop
-    generator_task = asyncio.create_task(telemetry_service.start_synthetic_generator())
-
     yield
 
     # 2. Shutdown phase
     logger.info("Shutting down PulseGuard-AI Edge Gateway...")
-    generator_task.cancel()
     if telemetry_service.redis_client:
         await telemetry_service.redis_client.close()
 

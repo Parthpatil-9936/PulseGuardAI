@@ -11,7 +11,10 @@ import re
 from typing import Dict, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
-from backend.app.core.config import settings
+try:
+    from app.core.config import settings
+except ImportError:
+    from backend.app.core.config import settings
 
 
 def get_bed_id_pattern(max_beds: Optional[int] = None) -> str:

@@ -4,37 +4,12 @@ const AuthContext = createContext(null);
 
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
-export const DEMO_PROFILES = {
-  doctor: {
-    id: 'usr_doc_01',
-    name: 'Dr. Sarah Chen, MD',
-    email: 'dr.chen@pulseguard.icu',
-    defaultPassword: 'doctor123',
-    role: 'doctor',
-    title: 'Attending Cardiologist',
-    department: 'Critical Care Unit 4',
-    initials: 'SC',
-    assignedBeds: ['01', '02', '04', '07', '10'],
-    description: 'Directs patient care, reviews XAI diagnostics, prescribes interventions, requests transfers.'
-  },
-  admin: {
-    id: 'usr_adm_01',
-    name: 'Alex Rivera',
-    email: 'admin.rivera@pulseguard.icu',
-    defaultPassword: 'admin123',
-    role: 'admin',
-    title: 'Hospital Clinical Systems Admin',
-    department: 'Biomedical Informatics',
-    initials: 'AR',
-    assignedBeds: [],
-    description: 'Administers RBAC staff, approves/rejects transfers, verifies SHA-256 ledger, issues break-glass tokens.'
-  }
-};
+
 
 // Strict Panel Isolation Matrix: which tabs are permitted for each role
 export const PANEL_PERMISSIONS = {
   doctor: ['dashboard', 'patient-detail', 'patients', 'transfers', 'notes', 'design-system'],
-  admin: ['analytics', 'transfers', 'users', 'audit', 'emergency', 'dashboard', 'patient-detail', 'patients', 'design-system']
+  admin: ['analytics', 'transfers', 'users', 'audit', 'emergency', 'dashboard', 'patient-detail', 'patients', 'notes', 'design-system']
 };
 
 export const AuthProvider = ({ children }) => {
@@ -52,6 +27,25 @@ export const AuthProvider = ({ children }) => {
     return Boolean(localStorage.getItem('pulseguard_token') && localStorage.getItem('pulseguard_role'));
   });
 
+  useEffect(() => {
+    const validateToken = async () => {
+      const storedToken = localStorage.getItem('pulseguard_token');
+      if (storedToken) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/auth/me`, {
+            headers: { 'Authorization': `Bearer ${storedToken}` }
+          });
+          if (!res.ok) {
+            logout();
+          }
+        } catch (err) {
+          logout();
+        }
+      }
+    };
+    validateToken();
+  }, []);
+
   // Verify whether a given tab is authorized for current role
   const canAccessTab = (tab) => {
     if (!role) return false;
@@ -59,56 +53,107 @@ export const AuthProvider = ({ children }) => {
     return allowed.includes(tab);
   };
 
-  // Login handler: contacts FastAPI backend /auth/login with graceful offline fallback
-  const login = async (email, password, roleHint = 'doctor') => {
+  const login = async (email, password) => {
     const cleanEmail = email.trim().toLowerCase();
-    let authToken = null;
-    let authUser = null;
-    let authRole = roleHint.toLowerCase();
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, password })
+    });
 
-    // Find profile matching email or hint
-    const matchedProfile = Object.values(DEMO_PROFILES).find(p => p.email === cleanEmail) || DEMO_PROFILES[authRole];
-    if (matchedProfile) {
-      authRole = matchedProfile.role;
+    if (!response.ok) {
+      throw new Error("Authentication failed");
     }
 
-    try {
-      // Attempt backend FastAPI authentication
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, password })
-      });
+    const data = await response.json();
+    const authRole = data.role.toLowerCase();
+    const authUser = {
+      id: data.user_id,
+      name: data.name,
+      email: cleanEmail,
+      role: authRole,
+      department: 'Critical Care',
+      assignedBeds: []
+    };
 
-      if (response.ok) {
-        const data = await response.json();
-        authToken = data.access_token;
-        authRole = data.role.toLowerCase();
-        authUser = {
-          id: data.user_id,
-          name: data.name,
-          email: cleanEmail,
-          role: authRole,
-          department: matchedProfile?.department || 'Critical Care',
-          assignedBeds: matchedProfile?.assignedBeds || []
-        };
-      }
-    } catch (err) {
-      console.warn('Backend API unreachable, using local authenticated clinical profile:', err);
-    }
-
-    // Fallback if backend is currently launching or standalone
-    if (!authToken) {
-      authToken = `local_jwt_${Date.now()}_${authRole}`;
-      authUser = matchedProfile || DEMO_PROFILES[authRole];
-    }
-
-    setToken(authToken);
+    setToken(data.access_token);
     setRole(authRole);
     setUser(authUser);
     setIsAuthenticated(true);
 
-    localStorage.setItem('pulseguard_token', authToken);
+    localStorage.setItem('pulseguard_token', data.access_token);
+    localStorage.setItem('pulseguard_role', authRole);
+    localStorage.setItem('pulseguard_user', JSON.stringify(authUser));
+    localStorage.setItem('pulseguard_auth', 'true');
+
+    return authRole;
+  };
+
+  const register = async (name, email, password, role) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email: cleanEmail, password, role })
+    });
+
+    if (!response.ok) {
+      throw new Error("Registration failed");
+    }
+
+    const data = await response.json();
+    const authRole = data.role.toLowerCase();
+    const authUser = {
+      id: data.user_id,
+      name: data.name,
+      email: cleanEmail,
+      role: authRole,
+      department: 'Critical Care',
+      assignedBeds: []
+    };
+
+    setToken(data.access_token);
+    setRole(authRole);
+    setUser(authUser);
+    setIsAuthenticated(true);
+
+    localStorage.setItem('pulseguard_token', data.access_token);
+    localStorage.setItem('pulseguard_role', authRole);
+    localStorage.setItem('pulseguard_user', JSON.stringify(authUser));
+    localStorage.setItem('pulseguard_auth', 'true');
+
+    return authRole;
+  };
+
+  const loginWithGoogle = async (email, name) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const response = await fetch(`${API_BASE_URL}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, name })
+    });
+
+    if (!response.ok) {
+      throw new Error("Google authentication failed");
+    }
+
+    const data = await response.json();
+    const authRole = data.role.toLowerCase();
+    const authUser = {
+      id: data.user_id,
+      name: data.name,
+      email: cleanEmail,
+      role: authRole,
+      department: 'Critical Care',
+      assignedBeds: []
+    };
+
+    setToken(data.access_token);
+    setRole(authRole);
+    setUser(authUser);
+    setIsAuthenticated(true);
+
+    localStorage.setItem('pulseguard_token', data.access_token);
     localStorage.setItem('pulseguard_role', authRole);
     localStorage.setItem('pulseguard_user', JSON.stringify(authUser));
     localStorage.setItem('pulseguard_auth', 'true');
@@ -137,8 +182,9 @@ export const AuthProvider = ({ children }) => {
       login,
       logout,
       canAccessTab,
-      DEMO_PROFILES,
-      PANEL_PERMISSIONS
+      PANEL_PERMISSIONS,
+      register,
+      loginWithGoogle
     }}>
       {children}
     </AuthContext.Provider>

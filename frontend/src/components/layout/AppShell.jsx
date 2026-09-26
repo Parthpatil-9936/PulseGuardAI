@@ -185,23 +185,6 @@ export const AppShell = ({
                 </button>
               );
             })}
-
-            {/* Design System Preview Quick Link */}
-            <div className="pt-2 mt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={onOpenDesignSystem}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors group relative"
-              >
-                <Layers className="w-4 h-4 text-slate-400 group-hover:text-[#0EA5B7] shrink-0" />
-                {!sidebarCollapsed && <span>Design System Preview</span>}
-                {sidebarCollapsed && (
-                  <div className="absolute left-full ml-2 px-2 py-1 bg-slate-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50">
-                    Design System
-                  </div>
-                )}
-              </button>
-            </div>
           </nav>
         </div>
 

@@ -29,17 +29,30 @@ from typing import Dict, Literal, Optional, Tuple, Union
 import numpy as np
 import torch
 
-from backend.app.ml.autoencoder import (
-    CHANNEL_NAMES,
-    MAX_BOUNDS,
-    MIN_BOUNDS,
-    TelemetryAutoencoder,
-    compute_per_channel_mse,
-    scale_raw_window,
-)
-from backend.app.schemas.telemetry import ProcessedTelemetryTick
-from backend.app.schemas.triage import TriageDecision
-from backend.app.services.ring_buffer import TelemetryRingBuffer
+try:
+    from app.ml.autoencoder import (
+        CHANNEL_NAMES,
+        MAX_BOUNDS,
+        MIN_BOUNDS,
+        TelemetryAutoencoder,
+        compute_per_channel_mse,
+        scale_raw_window,
+    )
+    from app.schemas.telemetry import ProcessedTelemetryTick
+    from app.schemas.triage import TriageDecision
+    from app.services.ring_buffer import TelemetryRingBuffer
+except ImportError:
+    from backend.app.ml.autoencoder import (
+        CHANNEL_NAMES,
+        MAX_BOUNDS,
+        MIN_BOUNDS,
+        TelemetryAutoencoder,
+        compute_per_channel_mse,
+        scale_raw_window,
+    )
+    from backend.app.schemas.telemetry import ProcessedTelemetryTick
+    from backend.app.schemas.triage import TriageDecision
+    from backend.app.services.ring_buffer import TelemetryRingBuffer
 
 logger = logging.getLogger(__name__)
 

@@ -12,7 +12,6 @@ import { UserManagement } from './pages/admin/UserManagement';
 import { AuditLogViewer } from './pages/admin/AuditLogViewer';
 import { EmergencyAccess } from './pages/admin/EmergencyAccess';
 import { AnalyticsDashboard } from './pages/admin/AnalyticsDashboard';
-import { DesignSystemPreview } from './pages/DesignSystemPreview';
 import { Login } from './pages/Login';
 import { CriticalAlertModal } from './components/patient/CriticalAlertModal';
 import { AccessDenied } from './components/common/AccessDenied';
@@ -25,15 +24,11 @@ function MainApp() {
 
   // Navigation tab state
   const [currentTab, setCurrentTab] = useState(() => {
-    // Check URL hash if available (e.g. #design-system)
-    if (typeof window !== 'undefined' && window.location.hash === '#design-system') {
-      return 'design-system';
-    }
     const savedRole = typeof window !== 'undefined' ? localStorage.getItem('pulseguard_role') : null;
     return savedRole === 'admin' ? 'analytics' : 'dashboard';
   });
 
-  const [selectedBedId, setSelectedBedId] = useState('04');
+  const [selectedBedId, setSelectedBedId] = useState(null);
   const [isTier1ModalForcedOpen, setIsTier1ModalForcedOpen] = useState(false);
 
   // Telemetry simulator hook
@@ -41,11 +36,18 @@ function MainApp() {
     beds,
     waveforms,
     activeTier1Bed,
+    loading: bedsLoading,
     acknowledgeTier2Alert,
     acknowledgeTier1Alert,
-    injectHypoxia,
-    resetAllBeds,
+    refreshBeds,
   } = useTelemetrySimulator();
+
+  // Select first bed by default once beds load
+  useEffect(() => {
+    if (!selectedBedId && beds.length > 0) {
+      setSelectedBedId(beds[0].bedId);
+    }
+  }, [beds, selectedBedId]);
 
   // Find currently selected bed object
   const activeBed = beds.find(b => b.bedId === selectedBedId) || beds[0];
@@ -63,9 +65,7 @@ function MainApp() {
   // Handle URL hash changes
   useEffect(() => {
     const handleHash = () => {
-      if (window.location.hash === '#design-system') {
-        setCurrentTab('design-system');
-      } else if (window.location.hash === '#login') {
+      if (window.location.hash === '#login') {
         setCurrentTab('login');
       }
     };
@@ -76,7 +76,7 @@ function MainApp() {
   // Automatically synchronize tab if currentTab is forbidden for the active role
   useEffect(() => {
     if (isAuthenticated && role) {
-      if (currentTab !== 'design-system' && currentTab !== 'login' && !canAccessTab(currentTab)) {
+      if (currentTab !== 'login' && !canAccessTab(currentTab)) {
         setCurrentTab(role === 'admin' ? 'analytics' : 'dashboard');
       }
     }
@@ -102,17 +102,6 @@ function MainApp() {
     );
   }
 
-  // Design System Preview Mode (Phase 1 Deliverable)
-  if (currentTab === 'design-system') {
-    return (
-      <DesignSystemPreview 
-        onNavigateToApp={() => {
-          window.location.hash = '';
-          setCurrentTab(role === 'admin' ? 'analytics' : 'dashboard');
-        }} 
-      />
-    );
-  }
 
   // Handle opening patient detail
   const handleSelectBed = (bedId) => {
@@ -127,10 +116,6 @@ function MainApp() {
       <AppShell
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
-        onOpenDesignSystem={() => {
-          window.location.hash = 'design-system';
-          setCurrentTab('design-system');
-        }}
       >
         {/* Strict Panel Isolation Barrier: if tab is forbidden, render AccessDenied */}
         {!isCurrentTabAuthorized ? (
@@ -147,8 +132,6 @@ function MainApp() {
                 beds={beds}
                 waveforms={waveforms}
                 onSelectBed={handleSelectBed}
-                onInjectHypoxia={() => injectHypoxia('04')}
-                onResetBeds={resetAllBeds}
               />
             )}
 

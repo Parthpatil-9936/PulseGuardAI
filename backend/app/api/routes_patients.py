@@ -11,7 +11,7 @@ from app.models.note import MedicalNote
 from app.models.alert import Alert
 from app.models.assignment import PatientAssignment
 from app.models.user import User
-from app.schemas.patient import PatientOut, BedOut, MedicalNoteCreate, MedicalNoteOut
+from app.schemas.patient import PatientOut, BedOut, MedicalNoteCreate, MedicalNoteOut, PatientCreate, PatientAllocate
 from app.schemas.alert import AlertOut
 from app.core.dependencies import get_current_user, verify_patient_access
 from app.services.telemetry import telemetry_service
@@ -51,6 +51,96 @@ async def list_patients(
     stmt = select(Patient).order_by(Patient.id.asc())
     res = await db.execute(stmt)
     return res.scalars().all()
+
+
+@router.post("/patients", response_model=PatientOut)
+async def create_patient(
+    req: PatientCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can create patients")
+        
+    patient_id = f"pat_{uuid.uuid4().hex[:8]}"
+    patient = Patient(
+        id=patient_id,
+        external_ref=f"MRN-{uuid.uuid4().hex[:6].upper()}",
+        demographics={
+            "name": req.name,
+            "age": req.age,
+            "gender": req.gender,
+            "diagnosis": req.diagnosis,
+            "code_status": req.code_status,
+        },
+        status="admitted",
+        created_at=datetime.datetime.utcnow()
+    )
+    db.add(patient)
+    
+    # Try to find an empty bed
+    stmt = select(Bed).where(Bed.patient_id == None).order_by(Bed.id)
+    res = await db.execute(stmt)
+    empty_bed = res.scalars().first()
+    
+    if empty_bed:
+        empty_bed.patient_id = patient_id
+        empty_bed.status = "occupied"
+    
+    await append_audit_log(
+        session=db,
+        action="PATIENT_ADMITTED",
+        bed_id=empty_bed.id if empty_bed else None,
+        clinician_id=current_user.id,
+        metadata={"patient_id": patient_id}
+    )
+    
+    await db.commit()
+    await db.refresh(patient)
+    return patient
+
+
+@router.post("/patients/{id}/allocate")
+async def allocate_patient(
+    id: str,
+    req: PatientAllocate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can allocate patients")
+        
+    # Check patient
+    stmt = select(Patient).where(Patient.id == id)
+    res = await db.execute(stmt)
+    if not res.scalars().first():
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    # Check doctor
+    stmt_u = select(User).where(User.id == req.doctor_id, User.role == "doctor")
+    res_u = await db.execute(stmt_u)
+    if not res_u.scalars().first():
+        raise HTTPException(status_code=404, detail="Doctor not found")
+        
+    assignment = PatientAssignment(
+        id=f"assign_{uuid.uuid4().hex[:8]}",
+        patient_id=id,
+        doctor_id=req.doctor_id,
+        assigned_by=current_user.id,
+        status="active"
+    )
+    db.add(assignment)
+    
+    await append_audit_log(
+        session=db,
+        action="PATIENT_ALLOCATED",
+        bed_id=None,
+        clinician_id=current_user.id,
+        metadata={"patient_id": id, "doctor_id": req.doctor_id}
+    )
+    
+    await db.commit()
+    return {"status": "allocated"}
 
 
 @router.get("/patients/{id}", response_model=PatientOut)
@@ -147,3 +237,26 @@ async def create_patient_note(
     await db.commit()
     await db.refresh(note)
     return note
+
+
+@router.get("/assignments")
+async def list_assignments(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns all patient assignments (active and historical).
+    Used by the frontend to map patients to their assigned doctors.
+    """
+    stmt = select(PatientAssignment).order_by(PatientAssignment.assigned_at.desc())
+    res = await db.execute(stmt)
+    return [
+        {
+            "id": a.id,
+            "patient_id": a.patient_id,
+            "doctor_id": a.doctor_id,
+            "status": a.status,
+            "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+        }
+        for a in res.scalars().all()
+    ]

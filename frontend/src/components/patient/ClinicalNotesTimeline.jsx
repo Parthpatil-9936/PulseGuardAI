@@ -154,14 +154,16 @@ export const ClinicalNotesTimeline = ({ bedId, patientName }) => {
             ))}
           </div>
 
-          <Button
-            variant="primary"
-            size="sm"
-            icon={Plus}
-            onClick={() => setIsAddingNote(!isAddingNote)}
-          >
-            Add Clinical Note
-          </Button>
+          {role === 'doctor' && (
+            <Button
+              variant="primary"
+              size="sm"
+              icon={Plus}
+              onClick={() => setIsAddingNote(!isAddingNote)}
+            >
+              Add Clinical Note
+            </Button>
+          )}
         </div>
       </div>
 

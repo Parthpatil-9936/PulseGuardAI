@@ -112,13 +112,13 @@ def extract_explainability_factors(window: Any, anomaly_score: float) -> List[st
     """Compatibility function for alert_service extracting clinical contributing factors."""
     factors = []
     if isinstance(window, list) and not window:
-        return ["Telemetry baseline stable"]
+        return ["Stable"]
     if isinstance(window, list):
         latest = window[-1]
     elif isinstance(window, dict):
         latest = window
     else:
-        return ["Telemetry baseline stable"]
+        return ["Stable"]
 
     hr = latest.get("hr", 75)
     spo2 = latest.get("spo2", 98)
@@ -126,33 +126,33 @@ def extract_explainability_factors(window: Any, anomaly_score: float) -> List[st
     bp_dia = latest.get("bp_dia", 80)
 
     if spo2 < 85.0:
-        factors.append(f"SpO2 < 85% deterministic safety threshold breach ({spo2}%)")
+        factors.append("Critical Hypoxia")
     elif spo2 < 92.0:
-        factors.append(f"SpO2 declining ({spo2}% current)")
+        factors.append("Hypoxia")
 
     if isinstance(window, list) and len(window) >= 5:
         spo2_delta = window[0].get("spo2", spo2) - spo2
         if spo2_delta > 2.0:
-            factors.append(f"Acute desaturation: -{spo2_delta:.1f}% over rolling window")
+            factors.append("Desaturation")
 
     if hr > 130:
-        factors.append(f"Extreme tachycardia: HR {hr} bpm")
+        factors.append("Severe Tachycardia")
     elif hr > 105:
-        factors.append(f"Tachycardic divergence: HR {hr} bpm")
+        factors.append("Tachycardia")
     elif hr < 50:
-        factors.append(f"Bradycardia: HR {hr} bpm")
+        factors.append("Bradycardia")
 
     if bp_sys < 90 or bp_dia < 60:
-        factors.append(f"Hypotensive pressure collapse ({bp_sys}/{bp_dia} mmHg)")
+        factors.append("Hypotension")
 
     if hr > 115 and (bp_sys < 95 or (bp_sys and bp_sys < 100)):
-        factors.append("HR/BP covariance diverging (HR ↑, MAP ↓)")
+        factors.append("Shock Indicator")
 
     if not factors:
         if anomaly_score > 0.4:
-            factors.append("Multi-vital covariance drift detected by autoencoder")
+            factors.append("Vital Drift")
         else:
-            factors.append("Sinus rhythm and oxygen saturation stable within normal limits")
+            factors.append("Stable")
 
     return factors[:4]
 

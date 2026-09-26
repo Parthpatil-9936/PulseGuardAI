@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     # Ward Bed Limits
     MAX_BEDS: int = 10
 
-    # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./pulseguard.db"
+    # Database — default to PostgreSQL (use .env to override for local dev)
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgrespassword@localhost:5432/pulseguard"
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
